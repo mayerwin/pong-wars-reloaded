@@ -2,8 +2,8 @@
 <html>
 
 <head>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Pong wars reloaded | Erwin Mayer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <title>Pong Wars Reloaded | Erwin Mayer</title>
   <meta name="description"
     content="The unforgiving battle between day and night, good and bad. Written in JavaScript with some HTML & CSS in one index.html. Feel free to reuse the code and create your own version." />
   <link rel="canonical" href="https://github.com/mayerwin/pong-wars-reloaded" />
@@ -11,86 +11,480 @@
   <meta name="theme-color" content="#172B36" />
   <meta name="creator" content="Erwin Mayer" />
   <style>
-    html {
-      height: 100%;
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html { height: 100%; }
+    body {
+      height: 100%; margin: 0; padding: 0;
+      display: flex; justify-content: center; align-items: center;
+      background: linear-gradient(to bottom, #172b36 0%, #d9e8e3 100%);
+      overflow: hidden; touch-action: none;
+      font-family: monospace;
     }
 
-    body {
-      height: 100%;
-      margin: 0;
-      padding: 0;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      background: linear-gradient(to bottom, #172b36 0%, #d9e8e3 100%);
+    #game-wrapper {
+      display: flex; flex-direction: row; align-items: center;
+      justify-content: center; height: 100%; width: 100%;
     }
+
+    .mobile-panel {
+      display: none; flex-direction: column; align-items: center;
+      justify-content: center; gap: 12px; padding: 4px;
+      width: 70px; flex-shrink: 0;
+    }
+    body.is-mobile .mobile-panel { display: flex; }
+    body.is-mobile.ai-mode #mobile-panel-right { visibility: hidden; }
+
+    .joystick-area {
+      width: 56px; height: 56px; border-radius: 50%;
+      background: rgba(23, 43, 54, 0.25);
+      border: 2px solid rgba(183, 62, 134, 0.4);
+      position: relative; touch-action: none;
+    }
+    .joystick-knob {
+      width: 24px; height: 24px; border-radius: 50%;
+      background: rgba(183, 62, 134, 0.5);
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%); pointer-events: none;
+    }
+    .rotate-btns { display: flex; gap: 6px; }
+    .rot-btn {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: rgba(23, 43, 54, 0.4);
+      border: 2px solid rgba(183, 62, 134, 0.35);
+      color: #D9E8E3; font-size: 16px; cursor: pointer;
+      touch-action: none; display: flex; align-items: center; justify-content: center;
+      padding: 0;
+    }
+    .rot-btn:active, .rot-btn.pressed { background: rgba(183, 62, 134, 0.5); }
 
     #container {
-      display: flex;
-      align-items: center;
-      flex-direction: column;
-      width: min(70vh, 80%);
-      max-width: 600px;
-      height: 100%;
+      display: flex; align-items: center; flex-direction: column;
+      width: min(70vh, 80%); max-width: 600px; height: 100%; position: relative;
     }
+    body.is-mobile #container { width: min(70vh, calc(100% - 150px)); max-width: none; }
 
     #pongCanvas {
-      display: block;
-      border-radius: 4px;
-      overflow: hidden;
-      width: 100%;
-      margin-top: auto;
+      display: block; border-radius: 4px; overflow: hidden;
+      width: 100%; margin-top: auto;
       box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
     }
 
-    #score {
-      font-family: monospace;
-      margin-top: 30px;
-      font-size: 16px;
-      padding-left: 20px;
-      color: #172b36;
+    #hud {
+      display: flex; justify-content: space-between; align-items: center;
+      width: 100%; margin-top: 10px; font-size: 13px; color: #172b36; padding: 0 4px;
     }
+    .team { display: flex; align-items: center; gap: 5px; }
+    .team-score { font-weight: bold; font-size: 15px; }
+    .powerup-icons { display: flex; gap: 3px; }
+    .powerup-icon {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 18px; height: 18px; border-radius: 9px; padding: 0 3px;
+      background: #B73E86; color: #fff; font-size: 10px; font-weight: bold;
+      text-align: center; line-height: 18px; white-space: nowrap; box-sizing: border-box;
+    }
+    #timer-display { font-size: 15px; font-weight: bold; color: #172b36; min-width: 40px; text-align: center; }
+    #duration-label { cursor: pointer; }
+    #progression-bar {
+      width: 100%; height: 6px; border-radius: 3px; overflow: hidden;
+      margin-top: 6px; display: flex; box-shadow: inset 0 1px 3px rgba(0,0,0,0.15);
+    }
+    #prog-day { height: 100%; background: #D9E8E3; transition: width 0.3s; }
+    #prog-night { height: 100%; background: #114C5A; transition: width 0.3s; }
 
     #made {
-      text-align: center;
-      line-height: 1.5;
-      font-family: monospace;
-      margin-top: auto;
-      margin-bottom: 20px;
-      font-size: 10px;
+      text-align: center; line-height: 1.5; margin-top: auto;
+      margin-bottom: 16px; font-size: 10px;
     }
+    #made a { color: #172b36; }
 
-    #made a {
-      color: #172b36;
+    /* Overlays */
+    .overlay {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      display: flex; justify-content: center; align-items: center;
+      z-index: 10; pointer-events: auto;
     }
+    .overlay.hidden { display: none; }
+
+    .menu-content {
+      background: rgba(23, 43, 54, 0.96); border-radius: 12px;
+      padding: 24px 28px; max-width: 400px; width: 92%;
+      color: #D9E8E3; text-align: center;
+      box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
+      max-height: 92vh; overflow-y: auto;
+    }
+    .menu-content h1 {
+      font-family: monospace; font-size: 22px; margin: 0 0 4px 0;
+      letter-spacing: 2px; color: #B73E86;
+    }
+    .menu-content h1 span { font-size: 14px; color: #D9E8E3; letter-spacing: 4px; }
+    .menu-subtitle { font-size: 11px; color: #8ba8a0; margin: 0 0 18px 0; }
+
+    .option-group { margin-bottom: 12px; text-align: left; }
+    .option-group label {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+      color: #8ba8a0; display: block; margin-bottom: 5px;
+    }
+    .toggle-group {
+      display: flex; border-radius: 6px; overflow: hidden;
+      border: 1px solid #2a5260;
+    }
+    .toggle-group button {
+      flex: 1; padding: 6px 5px; border: none; background: transparent;
+      color: #8ba8a0; font-family: monospace; font-size: 12px;
+      cursor: pointer; transition: all 0.15s;
+    }
+    .toggle-group button:not(:last-child) { border-right: 1px solid #2a5260; }
+    .toggle-group button.active { background: #114C5A; color: #D9E8E3; }
+    .toggle-group button:hover:not(.active) { background: rgba(17, 76, 90, 0.3); }
+
+    .duration-row { display: flex; align-items: center; gap: 10px; }
+    .duration-row input[type="range"] { flex: 1; accent-color: #B73E86; }
+    .duration-value { font-size: 14px; min-width: 36px; text-align: right; color: #B73E86; }
+
+    .start-button {
+      display: block; width: 100%; padding: 11px; margin-top: 16px;
+      border: none; border-radius: 8px; background: #B73E86; color: #fff;
+      font-family: monospace; font-size: 15px; font-weight: bold;
+      letter-spacing: 2px; cursor: pointer; transition: background 0.15s;
+    }
+    .start-button:hover { background: #cf4e9a; }
+    .secondary-button {
+      display: block; width: 100%; padding: 9px; margin-top: 7px;
+      border: 1px solid #2a5260; border-radius: 8px; background: transparent;
+      color: #D9E8E3; font-family: monospace; font-size: 12px;
+      cursor: pointer; transition: background 0.15s;
+    }
+    .secondary-button:hover { background: rgba(17, 76, 90, 0.3); }
+
+    .controls-help {
+      margin-top: 14px; font-size: 10px; color: #5a8a7e; line-height: 1.6;
+    }
+    .controls-help a { color: #B73E86; cursor: pointer; text-decoration: underline; }
+    .desktop-only { display: block; }
+    .mobile-only { display: none; }
+    body.is-mobile .desktop-only { display: none; }
+    body.is-mobile .mobile-only { display: block; }
+    .hidden { display: none !important; }
+
+    /* Gear / settings button */
+    #gear-btn {
+      position: absolute; top: 6px; right: 6px; background: none; border: none;
+      font-size: 20px; cursor: pointer; z-index: 5; opacity: 0.6;
+      transition: opacity 0.15s; padding: 4px; color: #172b36;
+    }
+    #gear-btn:hover { opacity: 1; }
+
+    /* Keybinding overlay */
+    .keybind-grid { display: flex; gap: 16px; text-align: left; }
+    .keybind-section { flex: 1; }
+    .keybind-section h3 { font-size: 11px; color: #B73E86; margin: 0 0 8px 0; }
+    .keybind-row {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 5px; font-size: 11px;
+    }
+    .keybind-btn {
+      background: #1a3a45; border: 1px solid #2a5260; color: #D9E8E3;
+      padding: 3px 10px; border-radius: 4px; cursor: pointer;
+      font-family: monospace; font-size: 11px; min-width: 42px; text-align: center;
+    }
+    .keybind-btn.listening { background: #B73E86; color: #fff; }
+    .keybind-btn:hover { border-color: #B73E86; }
+
+    /* Settings overlay */
+    .settings-section-title {
+      font-size: 12px; color: #B73E86; margin: 14px 0 8px 0;
+      text-transform: uppercase; letter-spacing: 1px; text-align: left;
+      border-bottom: 1px solid #2a5260; padding-bottom: 4px;
+    }
+    .setting-row {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 8px; font-size: 11px; text-align: left;
+    }
+    .setting-row label { margin: 0; min-width: 80px; }
+    .setting-controls {
+      display: flex; align-items: center; gap: 6px; flex: 1; justify-content: flex-end;
+    }
+    .setting-controls .toggle-group { min-width: 90px; }
+    .setting-controls input[type="range"] { width: 80px; accent-color: #B73E86; }
+    .setting-value { font-size: 11px; min-width: 30px; text-align: right; color: #B73E86; }
+    .reset-btn {
+      background: none; border: 1px solid #2a5260; color: #8ba8a0;
+      width: 22px; height: 22px; border-radius: 4px; cursor: pointer;
+      font-size: 12px; padding: 0; display: flex; align-items: center; justify-content: center;
+      transition: all 0.15s; flex-shrink: 0;
+    }
+    .reset-btn:hover { border-color: #B73E86; color: #B73E86; }
+    .game-logic-setting.disabled { opacity: 0.35; pointer-events: none; }
+
+    #gameover-content h1 { font-size: 26px; margin-bottom: 8px; }
+    #final-score { font-size: 14px; color: #8ba8a0; margin: 8px 0; }
   </style>
 </head>
 
 <body>
-  <div id="container">
-    <canvas id="pongCanvas" width="800" height="800"></canvas>
-    <div id="score"></div>
-    <p id="made">
-      made by Erwin Mayer as a fork of the excellent Pong Wars by <a href="https://koenvangilst.nl">Koen van Gilst</a> |
-      source on
-      <a href="https://github.com/mayerwin/pong-wars-reloaded">GitHub</a>
-    </p>
+  <div id="game-wrapper">
+    <!-- Mobile left panel -->
+    <div class="mobile-panel" id="mobile-panel-left">
+      <div class="joystick-area" id="joystick-p1"><div class="joystick-knob" id="knob-p1"></div></div>
+      <div class="rotate-btns">
+        <button class="rot-btn" id="rot-p1-ccw">&#x21BA;</button>
+        <button class="rot-btn" id="rot-p1-cw">&#x21BB;</button>
+      </div>
+    </div>
+
+    <div id="container">
+      <canvas id="pongCanvas" width="800" height="800"></canvas>
+      <div id="hud">
+        <div class="team day-team">
+          <span class="team-name">day</span>
+          <span class="team-score" id="day-score">512</span>
+          <span class="powerup-icons" id="day-powerups"></span>
+        </div>
+        <span id="timer-display"></span>
+        <div class="team night-team">
+          <span class="powerup-icons" id="night-powerups"></span>
+          <span class="team-score" id="night-score">512</span>
+          <span class="team-name">night</span>
+        </div>
+      </div>
+      <div id="progression-bar"><div id="prog-day" style="width:50%"></div><div id="prog-night" style="width:50%"></div></div>
+
+      <button id="gear-btn" title="Settings">&#x2699;</button>
+
+      <!-- Menu -->
+      <div id="menu" class="overlay">
+        <div class="menu-content">
+          <h1>PONG WARS<br><span>RELOADED</span></h1>
+          <p class="menu-subtitle">the unforgiving battle between day and night</p>
+          <div class="option-group">
+            <label>Game Mode</label>
+            <div class="toggle-group" id="mode-select">
+              <button data-value="2p" class="active">2 Players</button>
+              <button data-value="ai">vs AI</button>
+            </div>
+          </div>
+          <div class="option-group hidden" id="ai-options">
+            <label>AI Difficulty</label>
+            <div class="toggle-group" id="difficulty-select">
+              <button data-value="easy">Easy</button>
+              <button data-value="medium" class="active">Medium</button>
+              <button data-value="hard">Hard</button>
+              <button data-value="hardest">Hardest</button>
+            </div>
+          </div>
+          <div class="option-group">
+            <label>Win Condition</label>
+            <div class="toggle-group" id="win-select">
+              <button data-value="combined" class="active">Combined</button>
+              <button data-value="domination">Domination</button>
+              <button data-value="timed">Timed</button>
+            </div>
+          </div>
+          <div class="option-group" id="duration-options">
+            <label>Duration</label>
+            <div class="duration-row">
+              <input type="range" id="duration-slider" min="60" max="300" value="180" step="30">
+              <span class="duration-value" id="duration-label">3:00</span>
+            </div>
+          </div>
+          <button class="start-button" id="start-btn">START GAME</button>
+          <div class="controls-help desktop-only" id="desktop-controls-help">
+            P1: E S D F + A/Q rotate &bull; P2: Arrows + ,/. rotate<br>
+            <a id="config-keys-link">Configure Keys</a> &bull; <a id="menu-settings-link">&#x2699; Settings</a> &bull; ESC: Pause
+          </div>
+          <div class="controls-help mobile-only">
+            Use side joysticks to move &bull; Buttons to rotate<br>
+            <a id="menu-settings-link-mobile">&#x2699; Settings</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Settings overlay -->
+      <div id="settings-overlay" class="overlay hidden">
+        <div class="menu-content" id="settings-content">
+          <h1 style="font-size:16px;margin-bottom:6px">&#x2699; SETTINGS</h1>
+
+          <h2 class="settings-section-title">Sound</h2>
+          <div class="setting-row">
+            <label>Sound</label>
+            <div class="setting-controls">
+              <div class="toggle-group" id="snd-toggle" style="min-width:90px">
+                <button data-value="on" class="active">On</button>
+                <button data-value="off">Off</button>
+              </div>
+              <button class="reset-btn" data-key="soundEnabled" title="Reset to default">&#x21BA;</button>
+            </div>
+          </div>
+          <div class="setting-row">
+            <label>Volume</label>
+            <div class="setting-controls">
+              <input type="range" id="volume-slider" min="0" max="100" value="70">
+              <span class="setting-value" id="volume-label">70%</span>
+              <button class="reset-btn" data-key="soundVolume" title="Reset to default">&#x21BA;</button>
+            </div>
+          </div>
+
+          <h2 class="settings-section-title">Visual Effects</h2>
+          <div class="setting-row">
+            <label>All Effects</label>
+            <div class="setting-controls">
+              <div class="toggle-group" id="fx-master" style="min-width:90px">
+                <button data-value="on" class="active">On</button>
+                <button data-value="off">Off</button>
+              </div>
+              <button class="reset-btn" data-key="effectsEnabled" title="Reset to default">&#x21BA;</button>
+            </div>
+          </div>
+          <div id="fx-sub">
+            <div class="setting-row">
+              <label>Screen Shake</label>
+              <div class="setting-controls">
+                <div class="toggle-group" id="fx-shake" style="min-width:90px">
+                  <button data-value="on" class="active">On</button>
+                  <button data-value="off">Off</button>
+                </div>
+                <button class="reset-btn" data-key="screenShake" title="Reset to default">&#x21BA;</button>
+              </div>
+            </div>
+            <div class="setting-row">
+              <label>Racket Outline</label>
+              <div class="setting-controls">
+                <div class="toggle-group" id="fx-outline" style="min-width:90px">
+                  <button data-value="on" class="active">On</button>
+                  <button data-value="off">Off</button>
+                </div>
+                <button class="reset-btn" data-key="racketOutline" title="Reset to default">&#x21BA;</button>
+              </div>
+            </div>
+            <div class="setting-row">
+              <label>Grid Lines</label>
+              <div class="setting-controls">
+                <div class="toggle-group" id="fx-grid" style="min-width:90px">
+                  <button data-value="on" class="active">On</button>
+                  <button data-value="off">Off</button>
+                </div>
+                <button class="reset-btn" data-key="gridEffect" title="Reset to default">&#x21BA;</button>
+              </div>
+            </div>
+            <div class="setting-row">
+              <label>Particles</label>
+              <div class="setting-controls">
+                <div class="toggle-group" id="fx-particles" style="min-width:90px">
+                  <button data-value="on" class="active">On</button>
+                  <button data-value="off">Off</button>
+                </div>
+                <button class="reset-btn" data-key="particles" title="Reset to default">&#x21BA;</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="setting-row">
+            <label>Progress Bar</label>
+            <div class="setting-controls">
+              <div class="toggle-group" id="fx-progbar" style="min-width:90px">
+                <button data-value="on" class="active">On</button>
+                <button data-value="off">Off</button>
+              </div>
+              <button class="reset-btn" data-key="progressionBar" title="Reset to default">&#x21BA;</button>
+            </div>
+          </div>
+
+          <h2 class="settings-section-title">Powerups</h2>
+          <div class="setting-row game-logic-setting" id="pu-freq-row">
+            <label>Frequency</label>
+            <div class="setting-controls">
+              <input type="range" id="pu-freq-slider" min="5" max="60" value="15" step="5">
+              <span class="setting-value" id="pu-freq-label">15s</span>
+              <button class="reset-btn" data-key="powerupFrequency" title="Reset to default">&#x21BA;</button>
+            </div>
+          </div>
+          <div class="setting-row game-logic-setting" id="pu-dur-row">
+            <label>Duration</label>
+            <div class="setting-controls">
+              <input type="range" id="pu-dur-slider" min="10" max="120" value="40" step="5">
+              <span class="setting-value" id="pu-dur-label">40s</span>
+              <button class="reset-btn" data-key="powerupDuration" title="Reset to default">&#x21BA;</button>
+            </div>
+          </div>
+
+          <h2 class="settings-section-title">Gameplay</h2>
+          <div class="setting-row game-logic-setting" id="free-move-row">
+            <label>Free Movement</label>
+            <div class="setting-controls">
+              <div class="toggle-group" id="free-move-toggle" style="min-width:90px">
+                <button data-value="on">On</button>
+                <button data-value="off" class="active">Off</button>
+              </div>
+              <button class="reset-btn" data-key="freeMovement" title="Reset to default">&#x21BA;</button>
+            </div>
+          </div>
+
+          <button class="secondary-button desktop-only" id="settings-keys-btn">Configure Keys</button>
+          <button class="start-button" id="close-settings-btn" style="margin-top:10px">DONE</button>
+        </div>
+      </div>
+
+      <!-- Keybind overlay -->
+      <div id="keybind-overlay" class="overlay hidden">
+        <div class="menu-content">
+          <h1 style="font-size:16px;margin-bottom:12px">KEY BINDINGS</h1>
+          <div class="keybind-grid" id="keybind-grid"></div>
+          <button class="secondary-button" id="reset-keys-btn">Reset to Defaults</button>
+          <button class="start-button" id="close-keys-btn" style="margin-top:10px">DONE</button>
+        </div>
+      </div>
+
+      <!-- Pause -->
+      <div id="pause-overlay" class="overlay hidden">
+        <div class="menu-content">
+          <h1 style="font-size:26px">PAUSED</h1>
+          <p style="font-size:11px;color:#8ba8a0;margin:6px 0">ESC to resume</p>
+          <button class="start-button" id="resume-btn">RESUME</button>
+          <button class="secondary-button" id="pause-settings-btn">&#x2699; SETTINGS</button>
+          <button class="secondary-button" id="quit-btn">QUIT TO MENU</button>
+        </div>
+      </div>
+
+      <!-- Game Over -->
+      <div id="gameover" class="overlay hidden">
+        <div class="menu-content" id="gameover-content">
+          <h1 id="winner-text">DAY WINS!</h1>
+          <p id="final-score">520 - 504</p>
+          <button class="start-button" id="play-again-btn">PLAY AGAIN</button>
+          <button class="secondary-button" id="menu-btn">MENU</button>
+        </div>
+      </div>
+
+      <p id="made">
+        made by Erwin Mayer as a fork of the excellent Pong Wars by
+        <a href="https://koenvangilst.nl">Koen van Gilst</a> |
+        source on <a href="https://github.com/mayerwin/pong-wars-reloaded">GitHub</a>
+      </p>
+    </div>
+
+    <!-- Mobile right panel -->
+    <div class="mobile-panel" id="mobile-panel-right">
+      <div class="joystick-area" id="joystick-p2"><div class="joystick-knob" id="knob-p2"></div></div>
+      <div class="rotate-btns">
+        <button class="rot-btn" id="rot-p2-ccw">&#x21BA;</button>
+        <button class="rot-btn" id="rot-p2-cw">&#x21BB;</button>
+      </div>
+    </div>
   </div>
-</body>
 
 <script>
+  // ==================== CONSTANTS ====================
+  const ACCENT = '#B73E86';
+  const ACCENT_LIGHT = '#cf4e9a';
+
   const colorPalette = {
     ArcticPowder: "#F1F6F4",
     MysticMint: "#D9E8E3",
-    Forsythia: "#FFC801",
-    DeepSaffron: "#FF9932",
+    Forsythia: ACCENT,
+    DeepSaffron: "#9B3068",
     NocturnalExpedition: "#114C5A",
     OceanicNoir: "#172B36",
   };
-
-  const canvas = document.getElementById("pongCanvas");
-  const ctx = canvas.getContext("2d");
-  const scoreElement = document.getElementById("score");
 
   const DAY_COLOR = colorPalette.MysticMint;
   const DAY_BALL_COLOR = colorPalette.NocturnalExpedition;
@@ -98,280 +492,1786 @@
   const NIGHT_BALL_COLOR = colorPalette.MysticMint;
 
   const SQUARE_SIZE = 25;
-  const PLAYER_SIZE = SQUARE_SIZE * 5;
-  const PLAYER_SPEED = 10;
-  const BALL_SPEED = 5;
-  const numSquaresX = canvas.width / SQUARE_SIZE;
-  const numSquaresY = canvas.height / SQUARE_SIZE;
+  const CANVAS_SIZE = 800;
+  const NUM_SQUARES = CANVAS_SIZE / SQUARE_SIZE;
+  const TOTAL_SQUARES = NUM_SQUARES * NUM_SQUARES;
 
+  const BASE_BALL_SPEED = 7;
+  const MIN_SPEED = 5;
+  const MAX_SPEED = 14;
+  const BASE_BALL_RADIUS = SQUARE_SIZE / 2;
+
+  const BASE_PLAYER_SPEED = 12;
+  const BASE_PLAYER_WIDTH = SQUARE_SIZE;
+  const BASE_PLAYER_HEIGHT = SQUARE_SIZE * 6; // 6 squares tall (20% longer than 5)
+
+  const ROTATION_SPEED = 6 * Math.PI / 180; // 6 degrees per frame
+
+  const DOMINATION_THRESHOLD = 0.75;
+  const BIGGER_BALL_MULT = 2.0;
+  const BIGGER_RACKET_MULT = 1.6;
+  const FASTER_BALL_MULT = 1.4;
+  const POWERUP_VISUAL_RADIUS = SQUARE_SIZE;
+  const POWERUP_RESPAWN_QUICK = 10; // seconds after collection
+
+  const TICK_RATE = 60;
+  const TICK_MS = 1000 / TICK_RATE;
+  const SNAP_THRESHOLD = 3;
+
+  // ==================== MOBILE DETECTION ====================
+  const isMobile = ('ontouchstart' in window || navigator.maxTouchPoints > 0) &&
+    (window.innerWidth <= 1024 || 'ontouchstart' in window);
+  if (isMobile) document.body.classList.add('is-mobile');
+
+  // ==================== DOM REFS ====================
+  const canvas = document.getElementById("pongCanvas");
+  const ctx = canvas.getContext("2d");
+  const dayScoreEl = document.getElementById("day-score");
+  const nightScoreEl = document.getElementById("night-score");
+  const timerEl = document.getElementById("timer-display");
+  const dayPowerupsEl = document.getElementById("day-powerups");
+  const nightPowerupsEl = document.getElementById("night-powerups");
+
+  // ==================== SETTINGS ====================
+  const DEFAULT_BINDINGS = {
+    p1: { up: 'e', down: 'd', left: 's', right: 'f', rotL: 'a', rotR: 'q' },
+    p2: { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', rotL: ',', rotR: '.' },
+  };
+
+  const DEFAULT_ADV = {
+    effectsEnabled: true,
+    screenShake: true,
+    racketOutline: true,
+    gridEffect: false,
+    particles: true,
+    soundEnabled: true,
+    soundVolume: 70,
+    powerupFrequency: 15,
+    powerupDuration: 40,
+    progressionBar: true,
+    freeMovement: false,
+  };
+
+  let keyBindings = JSON.parse(JSON.stringify(DEFAULT_BINDINGS));
+
+  const settings = {
+    mode: '2p',
+    aiDifficulty: 'medium',
+    winCondition: 'combined',
+    duration: 180,
+    ...JSON.parse(JSON.stringify(DEFAULT_ADV)),
+  };
+
+  let settingsReturnTo = 'menu'; // 'menu' | 'pause' | 'playing'
+
+  function loadSettings() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('pongWarsSettings'));
+      if (!saved) return;
+      for (const k of Object.keys(DEFAULT_ADV)) {
+        if (saved[k] !== undefined) settings[k] = saved[k];
+      }
+      if (saved.keyBindings) {
+        if (saved.keyBindings.p1) Object.assign(keyBindings.p1, saved.keyBindings.p1);
+        if (saved.keyBindings.p2) Object.assign(keyBindings.p2, saved.keyBindings.p2);
+      }
+    } catch (e) { }
+  }
+
+  function saveSettings() {
+    try {
+      const obj = { keyBindings };
+      for (const k of Object.keys(DEFAULT_ADV)) obj[k] = settings[k];
+      localStorage.setItem('pongWarsSettings', JSON.stringify(obj));
+    } catch (e) { }
+  }
+
+  // ==================== AUDIO SYSTEM ====================
+  const audio = {
+    ctx: null,
+    masterGain: null,
+    init() {
+      if (this.ctx) return;
+      try {
+        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        this.masterGain = this.ctx.createGain();
+        this.masterGain.connect(this.ctx.destination);
+        this.masterGain.gain.value = settings.soundVolume / 100;
+      } catch (e) { }
+    },
+    resume() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); },
+    setVolume(v) {
+      settings.soundVolume = v;
+      if (this.masterGain) this.masterGain.gain.value = v / 100;
+    },
+    _play(fn) {
+      if (!settings.soundEnabled || !this.ctx) return;
+      this.resume();
+      try { fn(this.ctx, this.masterGain); } catch (e) { }
+    },
+    _lastBounce: 0,
+    playBounce(team) {
+      const now = performance.now();
+      if (now - this._lastBounce < 60) return;
+      this._lastBounce = now;
+      this._play((ac, dest) => {
+        const o = ac.createOscillator(), g = ac.createGain();
+        o.connect(g); g.connect(dest);
+        o.frequency.value = team === 'day' ? 440 : 330;
+        g.gain.setValueAtTime(0.1, ac.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.07);
+        o.start(); o.stop(ac.currentTime + 0.07);
+      });
+    },
+    playRacketHit() {
+      this._play((ac, dest) => {
+        const o = ac.createOscillator(), g = ac.createGain();
+        o.connect(g); g.connect(dest);
+        o.type = 'triangle'; o.frequency.value = 280;
+        g.gain.setValueAtTime(0.18, ac.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.1);
+        o.start(); o.stop(ac.currentTime + 0.1);
+      });
+    },
+    playPowerup() {
+      this._play((ac, dest) => {
+        [500, 650, 800].forEach((freq, i) => {
+          const o = ac.createOscillator(), g = ac.createGain();
+          o.connect(g); g.connect(dest);
+          o.type = 'triangle'; o.frequency.value = freq;
+          const t = ac.currentTime + i * 0.07;
+          g.gain.setValueAtTime(0.13, t);
+          g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+          o.start(t); o.stop(t + 0.12);
+        });
+      });
+    },
+    playWin() {
+      this._play((ac, dest) => {
+        [261.63, 329.63, 392.00, 523.25].forEach((freq, i) => {
+          const o = ac.createOscillator(), g = ac.createGain();
+          o.connect(g); g.connect(dest);
+          o.frequency.value = freq;
+          const t = ac.currentTime + i * 0.15;
+          g.gain.setValueAtTime(0, t);
+          g.gain.linearRampToValueAtTime(0.22, t + 0.05);
+          g.gain.exponentialRampToValueAtTime(0.001, t + 1.0);
+          o.start(t); o.stop(t + 1.0);
+        });
+      });
+    },
+  };
+
+  // ==================== GAME STATE ====================
+  const AI_CONFIG = {
+    easy:    { speedMult: 0.38, reactionFrames: 18, jitter: 35, seeksPowerups: false, predicts: false, advanceMult: 0.2 },
+    medium:  { speedMult: 0.62, reactionFrames: 10, jitter: 18, seeksPowerups: false, predicts: false, advanceMult: 0.4 },
+    hard:    { speedMult: 0.88, reactionFrames: 4,  jitter: 8,  seeksPowerups: true,  predicts: true,  advanceMult: 0.6 },
+    hardest: { speedMult: 1.0,  reactionFrames: 0,  jitter: 0,  seeksPowerups: true,  predicts: true,  advanceMult: 0.8 },
+  };
+
+  let game = { state: 'menu', timeRemaining: 0, tickCount: 0, winner: null };
   let squares = [];
+  let balls = [];
+  let player1, player2;
+  let powerups = [];
+  let activeEffects = { day: {}, night: {} };
+  let particles = [], ballTrails = [];
+  let screenShake = { intensity: 0 };
+  let dayScore = 0, nightScore = 0;
+  let lastSpawn = { day: 0, night: 0 };
+  let aiState = { targetX: 0, targetY: 0, reactionCounter: 0 };
+  const TELEPORT_MAX = 3;
+  const TELEPORT_HOLD_FRAMES = 180; // 3 seconds at 60fps
+  let teleportState = {
+    p1: { holdFrames: 0, remaining: TELEPORT_MAX },
+    p2: { holdFrames: 0, remaining: TELEPORT_MAX },
+  };
 
-  let player1 = { x: 50, y: canvas.height / 2, width: SQUARE_SIZE, height: PLAYER_SIZE, speed: PLAYER_SPEED };
-  let player2 = { x: canvas.width - 50, y: canvas.height / 2, width: SQUARE_SIZE, height: PLAYER_SIZE, speed: PLAYER_SPEED };
+  const keys = {};
+  let joystickInput = { p1: null, p2: null };
+  let mobileRotate = { p1ccw: false, p1cw: false, p2ccw: false, p2cw: false };
+  const ROT_SNAP = 45 * Math.PI / 180; // 45 degrees
+  const ROT_HOLD_THRESHOLD = 10; // frames before switching to fine rotation
+  let rotHoldFrames = { p1L: 0, p1R: 0, p2L: 0, p2R: 0 };
 
-  let player1Keys = { w: false, s: false, a: false, d: false };
-  let player2Keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
+  // ==================== GEOMETRY HELPERS ====================
+  function getRotatedCorners(cx, cy, w, h, angle) {
+    const c = Math.cos(angle), s = Math.sin(angle);
+    const hw = w / 2, hh = h / 2;
+    return [
+      { x: cx - hw * c + hh * s, y: cy - hw * s - hh * c },
+      { x: cx + hw * c + hh * s, y: cy + hw * s - hh * c },
+      { x: cx + hw * c - hh * s, y: cy + hw * s + hh * c },
+      { x: cx - hw * c - hh * s, y: cy - hw * s + hh * c },
+    ];
+  }
 
+  function getRotatedAABB(cx, cy, w, h, angle) {
+    const ca = Math.abs(Math.cos(angle)), sa = Math.abs(Math.sin(angle));
+    const bw = w * ca + h * sa, bh = w * sa + h * ca;
+    return { left: cx - bw / 2, top: cy - bh / 2, right: cx + bw / 2, bottom: cy + bh / 2 };
+  }
 
-  document.addEventListener('keydown', (event) => {
-    if (event.key in player1Keys) player1Keys[event.key] = true;
-    if (event.key in player2Keys) player2Keys[event.key] = true;
-  });
+  // Check that the rotated rectangle fits within canvas bounds
+  function isWithinBounds(cx, cy, w, h, angle) {
+    const aabb = getRotatedAABB(cx, cy, w, h, angle);
+    return aabb.left >= 0 && aabb.right <= CANVAS_SIZE && aabb.top >= 0 && aabb.bottom <= CANVAS_SIZE;
+  }
 
-  document.addEventListener('keyup', (event) => {
-    if (event.key in player1Keys) player1Keys[event.key] = false;
-    if (event.key in player2Keys) player2Keys[event.key] = false;
-  });
-
-  function getPossiblePosition(player, proposedX, proposedY) {
-    // Initialize newX and newY with proposed values
-    let newX = proposedX;
-    let newY = proposedY;
-
-    // Padding to maintain distance from squares of the same color
-    const padding = 5;
-
-    // Calculate the edges of the new position
-    const leftEdge = proposedX;
-    const rightEdge = proposedX + player.width;
-    const topEdge = proposedY;
-    const bottomEdge = proposedY + player.height;
-
-    // Adjust newX and newY to maintain at least 5px distance from squares of the same color
-    if (leftEdge < 0) {
-      newX = padding; // Keep minimum distance from the left edge
-    } else if (rightEdge > canvas.width - padding) {
-      newX = canvas.width - player.width - padding; // Keep minimum distance from the right edge
+  // Inlined perimeter validation — checks that no perimeter point sits on an enemy square
+  function isPerimeterValid(cx, cy, w, h, angle, step, enemyColor) {
+    const EPS = 0.5;
+    const c = Math.cos(angle), s = Math.sin(angle);
+    const hw = w / 2 - EPS, hh = h / 2 - EPS;
+    for (let t = -hw; t <= hw; t += step) {
+      if (!_checkPt(cx + t * c + hh * s, cy + t * s - hh * c, enemyColor)) return false;
+      if (!_checkPt(cx + t * c - hh * s, cy + t * s + hh * c, enemyColor)) return false;
     }
-
-    // Adjust newY if the player is moving outside the canvas vertically
-    if (topEdge < 0) {
-      newY = padding; // Keep minimum distance from the top edge
-    } else if (bottomEdge > canvas.height - padding) {
-      newY = canvas.height - player.height - padding; // Keep minimum distance from the bottom edge
+    for (let t = -hh + step; t < hh; t += step) {
+      if (!_checkPt(cx - hw * c + t * s, cy - hw * s - t * c, enemyColor)) return false;
+      if (!_checkPt(cx + hw * c + t * s, cy + hw * s - t * c, enemyColor)) return false;
     }
+    return true;
+  }
+  function _checkPt(x, y, enemyColor) {
+    if (x < 0 || x >= CANVAS_SIZE || y < 0 || y >= CANVAS_SIZE) return false;
+    const i = Math.floor(x / SQUARE_SIZE), j = Math.floor(y / SQUARE_SIZE);
+    return !(i >= 0 && i < NUM_SQUARES && j >= 0 && j < NUM_SQUARES && squares[i][j] === enemyColor);
+  }
 
-    // Calculate the indexes of the squares at the edges of the new position
-    let leftSquareX = Math.floor((newX - padding) / SQUARE_SIZE);
-    let rightSquareX = Math.ceil((newX + player.width + padding) / SQUARE_SIZE) - 1;
-    let topSquareY = Math.floor((newY - padding) / SQUARE_SIZE);
-    let bottomSquareY = Math.ceil((newY + player.height + padding) / SQUARE_SIZE) - 1;
+  function pointInRotatedRect(px, py, cx, cy, w, h, angle) {
+    const c = Math.cos(-angle), s = Math.sin(-angle);
+    const dx = px - cx, dy = py - cy;
+    const lx = dx * c - dy * s, ly = dx * s + dy * c;
+    return Math.abs(lx) <= w / 2 && Math.abs(ly) <= h / 2;
+  }
 
-    // Ensure indexes are within bounds
-    leftSquareX = Math.max(0, leftSquareX);
-    rightSquareX = Math.min(numSquaresX - 1, rightSquareX);
-    topSquareY = Math.max(0, topSquareY);
-    bottomSquareY = Math.min(numSquaresY - 1, bottomSquareY);
+  function rotatedRectOverlapsSquare(player, i, j) {
+    const aabb = getRotatedAABB(player.cx, player.cy, player.width, player.height, player.angle);
+    const sl = i * SQUARE_SIZE, st = j * SQUARE_SIZE;
+    const sr = sl + SQUARE_SIZE, sb = st + SQUARE_SIZE;
+    if (aabb.right < sl || aabb.left > sr || aabb.bottom < st || aabb.top > sb) return false;
+    if (pointInRotatedRect(sl + SQUARE_SIZE / 2, st + SQUARE_SIZE / 2,
+      player.cx, player.cy, player.width, player.height, player.angle)) return true;
+    for (const [ox, oy] of [[0, 0], [SQUARE_SIZE, 0], [0, SQUARE_SIZE], [SQUARE_SIZE, SQUARE_SIZE]]) {
+      if (pointInRotatedRect(sl + ox, st + oy, player.cx, player.cy, player.width, player.height, player.angle)) return true;
+    }
+    const corners = getRotatedCorners(player.cx, player.cy, player.width, player.height, player.angle);
+    for (const p of corners) {
+      if (p.x >= sl && p.x <= sr && p.y >= st && p.y <= sb) return true;
+    }
+    return false;
+  }
 
-    // Check if any part of the player would move into an opposing color square
-    // Check top and bottom edges
-    for (let x = leftSquareX; x <= rightSquareX; x++) {
-      if (topSquareY > 0 && squares[x][topSquareY] === (player === player1 ? NIGHT_COLOR : DAY_COLOR)) {
-        // Adjust newY to avoid moving into an opposing color square at the top
-        newY = player.y;
-      }
-      if (topSquareY === bottomSquareY) continue;
-      if (bottomSquareY < numSquaresY && squares[x][bottomSquareY] === (player === player1 ? NIGHT_COLOR : DAY_COLOR)) {
-        // Adjust newY to avoid moving into an opposing color square at the bottom
-        newY = player.y;
+  // ==================== PLAYER VALIDATION & MOVEMENT ====================
+  function isValidRotatedPos(player, cx, cy, angle) {
+    if (!isWithinBounds(cx, cy, player.width, player.height, angle)) return false;
+    if (settings.freeMovement) return true;
+    const enemyColor = player.team === 'day' ? NIGHT_COLOR : DAY_COLOR;
+    return isPerimeterValid(cx, cy, player.width, player.height, angle, 5, enemyColor);
+  }
+
+  function isPlayerStuck(player) {
+    if (settings.freeMovement) return false;
+    const spd = player.speed;
+    // Can move in any cardinal direction?
+    if (isValidRotatedPos(player, player.cx + spd, player.cy, player.angle)) return false;
+    if (isValidRotatedPos(player, player.cx - spd, player.cy, player.angle)) return false;
+    if (isValidRotatedPos(player, player.cx, player.cy + spd, player.angle)) return false;
+    if (isValidRotatedPos(player, player.cx, player.cy - spd, player.angle)) return false;
+    // Can move even 1px?
+    if (isValidRotatedPos(player, player.cx + 1, player.cy, player.angle)) return false;
+    if (isValidRotatedPos(player, player.cx - 1, player.cy, player.angle)) return false;
+    if (isValidRotatedPos(player, player.cx, player.cy + 1, player.angle)) return false;
+    if (isValidRotatedPos(player, player.cx, player.cy - 1, player.angle)) return false;
+    // Can rotate?
+    if (isValidRotatedPos(player, player.cx, player.cy, player.angle + ROT_SNAP)) return false;
+    if (isValidRotatedPos(player, player.cx, player.cy, player.angle - ROT_SNAP)) return false;
+    return true;
+  }
+
+  function rescuePlayer(player) {
+    // Clear enemy squares that touch the racket perimeter + 1 square margin
+    const ownColor = player.team === 'day' ? DAY_COLOR : NIGHT_COLOR;
+    const aabb = getRotatedAABB(player.cx, player.cy, player.width, player.height, player.angle);
+    const margin = SQUARE_SIZE;
+    const iMin = Math.max(0, Math.floor((aabb.left - margin) / SQUARE_SIZE));
+    const iMax = Math.min(NUM_SQUARES - 1, Math.floor((aabb.right + margin) / SQUARE_SIZE));
+    const jMin = Math.max(0, Math.floor((aabb.top - margin) / SQUARE_SIZE));
+    const jMax = Math.min(NUM_SQUARES - 1, Math.floor((aabb.bottom + margin) / SQUARE_SIZE));
+    for (let i = iMin; i <= iMax; i++) {
+      for (let j = jMin; j <= jMax; j++) {
+        if (squares[i][j] !== ownColor) {
+          const old = squares[i][j];
+          squares[i][j] = ownColor;
+          if (old === DAY_COLOR) { dayScore--; nightScore++; }
+          else { dayScore++; nightScore--; }
+        }
       }
     }
+  }
 
-    // Check left and right edges
-    for (let y = topSquareY; y <= bottomSquareY; y++) {
-      if (leftSquareX > 0 && squares[leftSquareX][y] === (player === player1 ? NIGHT_COLOR : DAY_COLOR)) {
-        // Adjust newX to avoid moving into an opposing color square on the left
-        newX = player.x;
-      }
-      if (leftSquareX === rightSquareX) continue;
-      if (rightSquareX < numSquaresX && squares[rightSquareX][y] === (player === player1 ? NIGHT_COLOR : DAY_COLOR)) {
-        // Adjust newX to avoid moving into an opposing color square on the right
-        newX = player.x;
+  function movePlayer(player, targetCx, targetCy) {
+    const dx = Math.sign(targetCx - player.cx);
+    if (dx !== 0) {
+      const steps = Math.min(Math.round(Math.abs(targetCx - player.cx)), player.speed);
+      for (let s = 0; s < steps; s++) {
+        if (isValidRotatedPos(player, player.cx + dx, player.cy, player.angle)) {
+          player.cx += dx;
+        } else break;
       }
     }
+    const dy = Math.sign(targetCy - player.cy);
+    if (dy !== 0) {
+      const steps = Math.min(Math.round(Math.abs(targetCy - player.cy)), player.speed);
+      for (let s = 0; s < steps; s++) {
+        if (isValidRotatedPos(player, player.cx, player.cy + dy, player.angle)) {
+          player.cy += dy;
+        } else break;
+      }
+    }
+  }
 
-    // Return the adjusted coordinates, ensuring they are within the canvas and not moving into opposing color squares
-    return { x: newX, y: newY };
+  function rotatePlayer(player, delta) {
+    const dir = delta > 0 ? 1 : -1;
+    const target = Math.round((player.angle + dir * ROT_SNAP) / ROT_SNAP) * ROT_SNAP;
+    if (isValidRotatedPos(player, player.cx, player.cy, target)) {
+      player.angle = target;
+    }
+  }
+
+  function snapRotation(player, targetAngle) {
+    // Only snap to exact 45-degree multiples
+    if (isValidRotatedPos(player, player.cx, player.cy, targetAngle)) {
+      player.angle = targetAngle;
+    }
+  }
+
+  function resetRotation(player) {
+    // Try to reset to 0
+    if (isValidRotatedPos(player, player.cx, player.cy, 0)) {
+      player.angle = 0;
+      return;
+    }
+    // Can't go to 0 — try nearest 45-degree multiples
+    for (let i = 1; i <= 4; i++) {
+      if (isValidRotatedPos(player, player.cx, player.cy, i * ROT_SNAP)) { player.angle = i * ROT_SNAP; return; }
+      if (isValidRotatedPos(player, player.cx, player.cy, -i * ROT_SNAP)) { player.angle = -i * ROT_SNAP; return; }
+    }
+  }
+
+  function applyGridSnap(player) {
+    if (Math.abs(player.angle) > 0.01) return;
+    const leftEdge = player.cx - player.width / 2;
+    const mod = ((leftEdge % SQUARE_SIZE) + SQUARE_SIZE) % SQUARE_SIZE;
+    if (mod > 0 && mod <= SNAP_THRESHOLD) {
+      const snapped = player.cx - mod;
+      if (isValidRotatedPos(player, snapped, player.cy, player.angle)) player.cx = snapped;
+    } else if (mod >= SQUARE_SIZE - SNAP_THRESHOLD) {
+      const snapped = player.cx + (SQUARE_SIZE - mod);
+      if (isValidRotatedPos(player, snapped, player.cy, player.angle)) player.cx = snapped;
+    }
+    const topEdge = player.cy - player.height / 2;
+    const modY = ((topEdge % SQUARE_SIZE) + SQUARE_SIZE) % SQUARE_SIZE;
+    if (modY > 0 && modY <= SNAP_THRESHOLD) {
+      const snapped = player.cy - modY;
+      if (isValidRotatedPos(player, player.cx, snapped, player.angle)) player.cy = snapped;
+    } else if (modY >= SQUARE_SIZE - SNAP_THRESHOLD) {
+      const snapped = player.cy + (SQUARE_SIZE - modY);
+      if (isValidRotatedPos(player, player.cx, snapped, player.angle)) player.cy = snapped;
+    }
   }
 
   function updatePlayers() {
-    const proposedPlayer1Y = player1.y + (player1Keys.w ? -player1.speed : player1Keys.s ? player1.speed : 0);
-    const proposedPlayer1X = player1.x + (player1Keys.a ? -player1.speed : player1Keys.d ? player1.speed : 0);
-    const newPosPlayer1 = getPossiblePosition(player1, proposedPlayer1X, proposedPlayer1Y);
-    player1.x = newPosPlayer1.x;
-    player1.y = newPosPlayer1.y;
+    // Record previous positions for racket velocity tracking
+    player1.prevCx = player1.cx; player1.prevCy = player1.cy;
+    player2.prevCx = player2.cx; player2.prevCy = player2.cy;
 
-    const proposedPlayer2Y = player2.y + (player2Keys.ArrowUp ? -player2.speed : player2Keys.ArrowDown ? player2.speed : 0);
-    const proposedPlayer2X = player2.x + (player2Keys.ArrowLeft ? -player2.speed : player2Keys.ArrowRight ? player2.speed : 0);
-    const newPosPlayer2 = getPossiblePosition(player2, proposedPlayer2X, proposedPlayer2Y);
-    player2.x = newPosPlayer2.x;
-    player2.y = newPosPlayer2.y;
+    if (isPlayerStuck(player1)) rescuePlayer(player1);
+    updatePlayerInput(player1, 'p1', keyBindings.p1);
+    applyGridSnap(player1);
+    pushBallsFromRacket(player1);
+
+    if (isPlayerStuck(player2)) rescuePlayer(player2);
+    if (settings.mode === 'ai') {
+      updateAI();
+    } else {
+      updatePlayerInput(player2, 'p2', keyBindings.p2);
+    }
+    applyGridSnap(player2);
+    pushBallsFromRacket(player2);
+
+    // Compute racket velocity for power shot
+    player1.vx = player1.cx - player1.prevCx; player1.vy = player1.cy - player1.prevCy;
+    player2.vx = player2.cx - player2.prevCx; player2.vy = player2.cy - player2.prevCy;
   }
 
-  let x1 = canvas.width / 4;
-  let y1 = canvas.height / 2;
-  let dx1 = BALL_SPEED;
-  let dy1 = -BALL_SPEED;
+  function updatePlayerInput(player, pKey, binds) {
+    const rL = keys[binds.rotL];
+    const rR = keys[binds.rotR];
+    const mrL = mobileRotate[pKey + 'ccw'];
+    const mrR = mobileRotate[pKey + 'cw'];
+    const rotLeft = rL || mrL;
+    const rotRight = rR || mrR;
 
-  let x2 = (canvas.width / 4) * 3;
-  let y2 = canvas.height / 2;
-  let dx2 = -BALL_SPEED;
-  let dy2 = BALL_SPEED;
+    const holdKeyL = pKey + 'L', holdKeyR = pKey + 'R';
+    if (rotLeft && rotRight) {
+      resetRotation(player);
+      rotHoldFrames[holdKeyL] = 0; rotHoldFrames[holdKeyR] = 0;
+    } else if (rotLeft) {
+      rotHoldFrames[holdKeyL]++;
+      if (rotHoldFrames[holdKeyL] === 1 || (rotHoldFrames[holdKeyL] > ROT_HOLD_THRESHOLD && rotHoldFrames[holdKeyL] % 6 === 0)) {
+        const target = Math.round((player.angle - ROT_SNAP) / ROT_SNAP) * ROT_SNAP;
+        snapRotation(player, target);
+      }
+      rotHoldFrames[holdKeyR] = 0;
+    } else if (rotRight) {
+      rotHoldFrames[holdKeyR]++;
+      if (rotHoldFrames[holdKeyR] === 1 || (rotHoldFrames[holdKeyR] > ROT_HOLD_THRESHOLD && rotHoldFrames[holdKeyR] % 6 === 0)) {
+        const target = Math.round((player.angle + ROT_SNAP) / ROT_SNAP) * ROT_SNAP;
+        snapRotation(player, target);
+      }
+      rotHoldFrames[holdKeyL] = 0;
+    } else {
+      rotHoldFrames[holdKeyL] = 0; rotHoldFrames[holdKeyR] = 0;
+    }
 
-  for (let i = 0; i < numSquaresX; i++) {
-    squares[i] = [];
-    for (let j = 0; j < numSquaresY; j++) {
-      squares[i][j] = i < numSquaresX / 2 ? DAY_COLOR : NIGHT_COLOR;
+    const ji = joystickInput[pKey];
+    if (ji) {
+      const mx = ji.dx * player.speed;
+      const my = ji.dy * player.speed;
+      if (Math.abs(mx) > 0.5 || Math.abs(my) > 0.5) {
+        movePlayer(player, player.cx + mx, player.cy + my);
+      }
+    } else {
+      const pressL = keys[binds.left], pressR = keys[binds.right];
+      const kx = (pressL ? -1 : 0) + (pressR ? 1 : 0);
+      const ky = (keys[binds.up] ? -1 : 0) + (keys[binds.down] ? 1 : 0);
+      if (kx || ky) movePlayer(player, player.cx + kx * player.speed, player.cy + ky * player.speed);
+
+      // Ball teleport: hold left+right for 3 seconds
+      const ts = teleportState[pKey];
+      if (pressL && pressR && ts.remaining > 0) {
+        ts.holdFrames++;
+        if (ts.holdFrames >= TELEPORT_HOLD_FRAMES) {
+          teleportBallToRacket(player);
+          ts.remaining--;
+          ts.holdFrames = 0;
+        }
+      } else {
+        ts.holdFrames = 0;
+      }
     }
   }
 
-  function drawBall(x, y, color) {
+  // ==================== BALL-RACKET PUSH (fixes ball-through-racket) ====================
+  function pushBallsFromRacket(player) {
+    for (const ball of balls) pushBallOutOfRacket(ball, player);
+  }
+
+  function pushBallOutOfRacket(ball, player) {
+    const dx = ball.x - player.cx, dy = ball.y - player.cy;
+    const c = Math.cos(-player.angle), s = Math.sin(-player.angle);
+    const lx = dx * c - dy * s, ly = dx * s + dy * c;
+    const hw = player.width / 2, hh = player.height / 2;
+
+    // Is ball center inside the racket?
+    if (Math.abs(lx) >= hw || Math.abs(ly) >= hh) {
+      // Center outside — check edge overlap
+      const clX = Math.max(-hw, Math.min(hw, lx));
+      const clY = Math.max(-hh, Math.min(hh, ly));
+      const ddx = lx - clX, ddy = ly - clY;
+      const distSq = ddx * ddx + ddy * ddy;
+      if (distSq >= ball.radius * ball.radius || distSq < 0.01) return;
+      // Edge overlap — push out along distance vector
+      const dist = Math.sqrt(distSq);
+      const nlx = ddx / dist, nly = ddy / dist;
+      const c2 = Math.cos(player.angle), s2 = Math.sin(player.angle);
+      const wnx = nlx * c2 - nly * s2, wny = nlx * s2 + nly * c2;
+      const overlap = ball.radius - dist + 1;
+      ball.x += wnx * overlap;
+      ball.y += wny * overlap;
+      const vDot = ball.dx * wnx + ball.dy * wny;
+      if (vDot < 0) { ball.dx -= 2 * vDot * wnx; ball.dy -= 2 * vDot * wny; }
+      return;
+    }
+
+    // Center is INSIDE the racket — find nearest edge and push out
+    const dists = [
+      { d: hw - lx,  nlx: 1,  nly: 0  },
+      { d: hw + lx,  nlx: -1, nly: 0  },
+      { d: hh - ly,  nlx: 0,  nly: 1  },
+      { d: hh + ly,  nlx: 0,  nly: -1 },
+    ];
+    dists.sort((a, b) => a.d - b.d);
+    const best = dists[0];
+    const pushDist = best.d + ball.radius + 1;
+    const c2 = Math.cos(player.angle), s2 = Math.sin(player.angle);
+    const wnx = best.nlx * c2 - best.nly * s2;
+    const wny = best.nlx * s2 + best.nly * c2;
+    ball.x += wnx * pushDist;
+    ball.y += wny * pushDist;
+    const vDot = ball.dx * wnx + ball.dy * wny;
+    if (vDot < 0) { ball.dx -= 2 * vDot * wnx; ball.dy -= 2 * vDot * wny; }
+    ball.skipSquareCheck = 4;
+    audio.playRacketHit();
+  }
+
+  function teleportBallToRacket(player) {
+    // Find nearest same-team ball
+    let best = null, bestDist = Infinity;
+    for (const b of balls) {
+      if (b.team !== player.team) continue;
+      const d = Math.hypot(b.x - player.cx, b.y - player.cy);
+      if (d < bestDist) { bestDist = d; best = b; }
+    }
+    if (!best) return;
+
+    // Reset ball to normal size
+    best.radius = BASE_BALL_RADIUS;
+    best.powerBoost = 0;
+    best.powerBoostTime = 0;
+
+    // Place ball at the front face of the racket
+    const outDir = player.team === 'day' ? 1 : -1;
+    const co = Math.cos(player.angle), si = Math.sin(player.angle);
+    const offset = (player.width / 2 + BASE_BALL_RADIUS + 2) * outDir;
+    best.x = player.cx + offset * co;
+    best.y = player.cy + offset * si;
+
+    // Clear enemy squares around the spawn point so the ball fits
+    const ownColor = player.team === 'day' ? DAY_COLOR : NIGHT_COLOR;
+    const clearRadius = 2; // clear a small area (2-square radius)
+    const ci = Math.floor(best.x / SQUARE_SIZE), cj = Math.floor(best.y / SQUARE_SIZE);
+    for (let di = -clearRadius; di <= clearRadius; di++) {
+      for (let dj = -clearRadius; dj <= clearRadius; dj++) {
+        const gi = ci + di, gj = cj + dj;
+        if (gi >= 0 && gi < NUM_SQUARES && gj >= 0 && gj < NUM_SQUARES && squares[gi][gj] !== ownColor) {
+          const old = squares[gi][gj];
+          squares[gi][gj] = ownColor;
+          if (old === DAY_COLOR) { dayScore--; nightScore++; }
+          else { dayScore++; nightScore--; }
+        }
+      }
+    }
+
+    // Fire outward from the racket face
+    best.dx = outDir * BASE_BALL_SPEED;
+    best.dy = (Math.random() - 0.5) * BASE_BALL_SPEED * 0.5;
+    best.skipSquareCheck = 8;
+    audio.playRacketHit();
+    if (settings.effectsEnabled && settings.particles) {
+      for (let p = 0; p < 8; p++) particles.push(makeParticle(best.x, best.y, best.ballColor));
+    }
+  }
+
+  // ==================== AI ====================
+  function updateAI() {
+    const cfg = AI_CONFIG[settings.aiDifficulty];
+
+    if (player2.angle > 0.01) rotatePlayer(player2, -ROT_SNAP);
+    else if (player2.angle < -0.01) rotatePlayer(player2, ROT_SNAP);
+    else if (isValidRotatedPos(player2, player2.cx, player2.cy, 0)) player2.angle = 0;
+
+    if (aiState.reactionCounter > 0) {
+      aiState.reactionCounter--;
+      const speed = player2.speed * cfg.speedMult;
+      const dy = Math.max(-speed, Math.min(speed, aiState.targetY - player2.cy));
+      const dx = Math.max(-speed, Math.min(speed, aiState.targetX - player2.cx));
+      movePlayer(player2, player2.cx + dx, player2.cy + dy);
+      return;
+    }
+    aiState.reactionCounter = cfg.reactionFrames;
+
+    let bestBall = null, bestUrgency = -Infinity;
+    for (const ball of balls) {
+      const urgency = ball.dx > 0 ? 1 + ball.x / CANVAS_SIZE : ball.x / CANVAS_SIZE * 0.3;
+      if (urgency > bestUrgency) { bestUrgency = urgency; bestBall = ball; }
+    }
+
+    let targetX = player2.cx, targetY = player2.cy;
+
+    if (bestBall && bestUrgency > 0.3) {
+      targetY = cfg.predicts ? predictBallY(bestBall, player2.cx) : bestBall.y;
+      targetX = Math.max(CANVAS_SIZE * 0.5, Math.min(CANVAS_SIZE - 40, bestBall.x + 80));
+      targetY += (Math.random() - 0.5) * cfg.jitter;
+    } else {
+      const advanceTarget = CANVAS_SIZE * (0.55 - cfg.advanceMult * 0.15);
+      targetX = Math.max(advanceTarget, player2.cx - 10);
+      targetY = CANVAS_SIZE / 2 + (Math.random() - 0.5) * 100;
+    }
+
+    if (cfg.seeksPowerups) {
+      let nearestPU = null, nearestDist = Infinity;
+      for (const pu of powerups) {
+        if (squares[pu.gridX][pu.gridY] !== NIGHT_COLOR) continue;
+        const px = pu.gridX * SQUARE_SIZE + SQUARE_SIZE / 2;
+        const py = pu.gridY * SQUARE_SIZE + SQUARE_SIZE / 2;
+        const dist = Math.hypot(px - player2.cx, py - player2.cy);
+        if (dist < nearestDist && dist < CANVAS_SIZE * 0.35) {
+          nearestDist = dist; nearestPU = pu;
+        }
+      }
+      if (nearestPU && bestUrgency < 0.6) {
+        targetX = nearestPU.gridX * SQUARE_SIZE + SQUARE_SIZE / 2;
+        targetY = nearestPU.gridY * SQUARE_SIZE + SQUARE_SIZE / 2;
+      }
+    }
+
+    aiState.targetX = targetX;
+    aiState.targetY = targetY;
+    const speed = player2.speed * cfg.speedMult;
+    movePlayer(player2, player2.cx + Math.max(-speed, Math.min(speed, targetX - player2.cx)),
+      player2.cy + Math.max(-speed, Math.min(speed, targetY - player2.cy)));
+  }
+
+  function predictBallY(ball, targetX) {
+    let sx = ball.x, sy = ball.y, sdx = ball.dx, sdy = ball.dy;
+    for (let step = 0; step < 300; step++) {
+      sx += sdx; sy += sdy;
+      if (sy < BASE_BALL_RADIUS || sy > CANVAS_SIZE - BASE_BALL_RADIUS) sdy = -sdy;
+      if (sx < BASE_BALL_RADIUS || sx > CANVAS_SIZE - BASE_BALL_RADIUS) sdx = -sdx;
+      if ((sdx > 0 && sx >= targetX) || (sdx < 0 && sx <= targetX)) return sy;
+    }
+    return ball.y;
+  }
+
+  // ==================== BALL PHYSICS ====================
+  function updateBalls() {
+    const now = game.tickCount / TICK_RATE;
+    balls = balls.filter(b => !b.isExtra || now < b.expiresAt);
+
+    for (const ball of balls) {
+      const effect = activeEffects[ball.team];
+      const bigStacks = effectStacks(ball.team, 'BIGGER_BALL', now);
+      ball.radius = bigStacks > 0 ? BASE_BALL_RADIUS * Math.pow(BIGGER_BALL_MULT, bigStacks) : BASE_BALL_RADIUS;
+      const fastStacks = effectStacks(ball.team, 'FASTER_BALL', now);
+      const speedMult = fastStacks > 0 ? Math.pow(FASTER_BALL_MULT, fastStacks) : 1;
+
+      if (ball.skipSquareCheck > 0) ball.skipSquareCheck--;
+      else checkSquareCollision(ball);
+
+      // Sub-step movement to prevent ball passing through rackets
+      const totalSpeed = Math.sqrt(ball.dx * ball.dx + ball.dy * ball.dy) * speedMult;
+      const subSteps = Math.max(1, Math.ceil(totalSpeed / ball.radius));
+      const subDt = speedMult / subSteps;
+      for (let s = 0; s < subSteps; s++) {
+        ball.x += ball.dx * subDt;
+        ball.y += ball.dy * subDt;
+        checkRacketCollision(ball, player1);
+        checkRacketCollision(ball, player2);
+      }
+      checkBoundaryCollision(ball, speedMult);
+      ball.x = Math.max(ball.radius, Math.min(CANVAS_SIZE - ball.radius, ball.x));
+      ball.y = Math.max(ball.radius, Math.min(CANVAS_SIZE - ball.radius, ball.y));
+
+      addRandomness(ball);
+
+      if (settings.effectsEnabled && settings.particles) {
+        ballTrails.push({ x: ball.x, y: ball.y, color: ball.ballColor, life: 1.0, radius: ball.radius * 0.5 });
+      }
+    }
+
+    // Ball-ball collision (elastic, handles different radii)
+    for (let i = 0; i < balls.length - 1; i++) {
+      for (let j = i + 1; j < balls.length; j++) {
+        const a = balls[i], b = balls[j];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const distSq = dx * dx + dy * dy;
+        const minDist = a.radius + b.radius;
+        if (distSq < minDist * minDist && distSq > 0.001) {
+          const dist = Math.sqrt(distSq);
+          const nx = dx / dist, ny = dy / dist;
+          // Push apart
+          const overlap = minDist - dist;
+          a.x -= nx * overlap * 0.5; a.y -= ny * overlap * 0.5;
+          b.x += nx * overlap * 0.5; b.y += ny * overlap * 0.5;
+          // Elastic velocity exchange along collision normal
+          const dvx = a.dx - b.dx, dvy = a.dy - b.dy;
+          const relV = dvx * nx + dvy * ny;
+          if (relV > 0) { // approaching
+            a.dx -= relV * nx; a.dy -= relV * ny;
+            b.dx += relV * nx; b.dy += relV * ny;
+          }
+        }
+      }
+    }
+  }
+
+  function checkSquareCollision(ball) {
+    let painted = false, bouncedX = false, bouncedY = false;
+    // More check points for bigger balls to avoid gaps
+    const angleStep = ball.radius > BASE_BALL_RADIUS ? Math.PI / 8 : Math.PI / 4;
+    const opponent = ball.team === 'day' ? player2 : player1;
+    for (let angle = 0; angle < Math.PI * 2; angle += angleStep) {
+      const checkX = ball.x + Math.cos(angle) * ball.radius;
+      const checkY = ball.y + Math.sin(angle) * ball.radius;
+      const i = Math.floor(checkX / SQUARE_SIZE);
+      const j = Math.floor(checkY / SQUARE_SIZE);
+
+      if (i >= 0 && i < NUM_SQUARES && j >= 0 && j < NUM_SQUARES && squares[i][j] !== ball.paintColor) {
+        // Only bounce+paint if not protected by opponent racket
+        if (rotatedRectOverlapsSquare(opponent, i, j)) continue;
+        const oldColor = squares[i][j];
+        squares[i][j] = ball.paintColor;
+        if (oldColor === DAY_COLOR) { dayScore--; nightScore++; }
+        else { dayScore++; nightScore--; }
+        painted = true;
+        if (Math.abs(Math.cos(angle)) > Math.abs(Math.sin(angle))) {
+          if (!bouncedX) { ball.dx = -ball.dx; bouncedX = true; }
+        } else {
+          if (!bouncedY) { ball.dy = -ball.dy; bouncedY = true; }
+        }
+      }
+    }
+    if (painted) {
+      audio.playBounce(ball.team);
+      if (settings.effectsEnabled && settings.screenShake) screenShake.intensity = Math.max(screenShake.intensity, 1);
+    }
+  }
+
+  function checkRacketCollision(ball, player) {
+    const dx = ball.x - player.cx, dy = ball.y - player.cy;
+    const c = Math.cos(-player.angle), s = Math.sin(-player.angle);
+    const lx = dx * c - dy * s, ly = dx * s + dy * c;
+    const hw = player.width / 2, hh = player.height / 2;
+
+    const closestX = Math.max(-hw, Math.min(hw, lx));
+    const closestY = Math.max(-hh, Math.min(hh, ly));
+    const distX = lx - closestX, distY = ly - closestY;
+    const distSq = distX * distX + distY * distY;
+
+    if (distSq < ball.radius * ball.radius) {
+      let nx, ny;
+      if (distSq < 0.01) {
+        // Ball center inside racket — find nearest edge
+        const edgeDists = [
+          { d: hw - lx, nlx: 1, nly: 0 }, { d: hw + lx, nlx: -1, nly: 0 },
+          { d: hh - ly, nlx: 0, nly: 1 }, { d: hh + ly, nlx: 0, nly: -1 },
+        ];
+        edgeDists.sort((a, b) => a.d - b.d);
+        const best = edgeDists[0];
+        const c2 = Math.cos(player.angle), s2 = Math.sin(player.angle);
+        nx = best.nlx * c2 - best.nly * s2;
+        ny = best.nlx * s2 + best.nly * c2;
+        const pushDist = best.d + ball.radius + 2;
+        ball.x += nx * pushDist;
+        ball.y += ny * pushDist;
+      } else {
+        const dist = Math.sqrt(distSq);
+        const nlx = distX / dist, nly = distY / dist;
+        const c2 = Math.cos(player.angle), s2 = Math.sin(player.angle);
+        nx = nlx * c2 - nly * s2;
+        ny = nlx * s2 + nly * c2;
+        const overlap = ball.radius - dist;
+        ball.x += nx * (overlap + 2);
+        ball.y += ny * (overlap + 2);
+      }
+      // Reflect velocity
+      const dot = ball.dx * nx + ball.dy * ny;
+      if (dot < 0) { ball.dx -= 2 * dot * nx; ball.dy -= 2 * dot * ny; }
+      // Angle variation
+      const hitPos = ly / hh;
+      ball.dy += hitPos * 1.8;
+      // Physics power shot: add racket velocity component along normal
+      const rvx = player.vx || 0, rvy = player.vy || 0;
+      const racketVNorm = rvx * nx + rvy * ny; // racket speed projected onto bounce normal
+      if (racketVNorm > 0.5) {
+        // Racket was moving into the ball — apply moderate momentum transfer
+        // Capped at 30% of MAX_SPEED to keep it realistic
+        const boostAdd = Math.min(racketVNorm * 0.35, MAX_SPEED * 0.3);
+        ball.dx += nx * boostAdd; ball.dy += ny * boostAdd;
+        ball.powerBoost = boostAdd;
+        ball.powerBoostTime = game.tickCount / TICK_RATE;
+      }
+      // Clamp speed (with decaying boost allowance, hard cutoff at 5s)
+      const spd = Math.sqrt(ball.dx * ball.dx + ball.dy * ball.dy);
+      const boostAge = game.tickCount / TICK_RATE - (ball.powerBoostTime || 0);
+      const boostExtra = boostAge < 5 ? (ball.powerBoost || 0) * (1 - boostAge / 5) : 0;
+      const dynamicMax = MAX_SPEED + boostExtra;
+      if (spd > dynamicMax) { ball.dx = (ball.dx / spd) * dynamicMax; ball.dy = (ball.dy / spd) * dynamicMax; }
+
+      ball.skipSquareCheck = 4; // avoid immediate re-bounce into squares
+      audio.playRacketHit();
+      if (settings.effectsEnabled) {
+        if (settings.screenShake) screenShake.intensity = Math.max(screenShake.intensity, 3.5);
+        if (settings.particles) for (let p = 0; p < 5; p++) particles.push(makeParticle(ball.x, ball.y, ball.ballColor));
+      }
+    }
+  }
+
+  function checkBoundaryCollision(ball, speedMult) {
+    const nx = ball.x + ball.dx * speedMult, ny = ball.y + ball.dy * speedMult;
+    if ((nx >= CANVAS_SIZE - ball.radius && ball.dx > 0) || (nx <= ball.radius && ball.dx < 0)) ball.dx = -ball.dx;
+    if ((ny >= CANVAS_SIZE - ball.radius && ball.dy > 0) || (ny <= ball.radius && ball.dy < 0)) ball.dy = -ball.dy;
+  }
+
+  function addRandomness(ball) {
+    ball.dx += Math.random() * 0.02 - 0.01;
+    ball.dy += Math.random() * 0.02 - 0.01;
+    const boostAge = game.tickCount / TICK_RATE - (ball.powerBoostTime || 0);
+    const boostExtra = boostAge < 5 ? (ball.powerBoost || 0) * (1 - boostAge / 5) : 0;
+    const cap = MAX_SPEED + boostExtra;
+    ball.dx = Math.min(Math.max(ball.dx, -cap), cap);
+    ball.dy = Math.min(Math.max(ball.dy, -cap), cap);
+    if (Math.abs(ball.dx) < MIN_SPEED) ball.dx = ball.dx > 0 ? MIN_SPEED : -MIN_SPEED;
+    if (Math.abs(ball.dy) < MIN_SPEED) ball.dy = ball.dy > 0 ? MIN_SPEED : -MIN_SPEED;
+  }
+
+  // ==================== POWERUPS ====================
+  // Count active stacks of an effect (cumulative powerups)
+  function effectStacks(team, type, now) {
+    const arr = activeEffects[team][type];
+    if (!arr) return 0;
+    let count = 0;
+    for (let i = arr.length - 1; i >= 0; i--) {
+      if (now < arr[i]) count++;
+      else { arr.splice(i, 1); } // clean up expired
+    }
+    return count;
+  }
+
+  const POWERUP_TYPES = ['BIGGER_BALL', 'EXTRA_BALL', 'BIGGER_RACKET', 'FASTER_BALL', 'SHRINK_RACKET'];
+  const POWERUP_HUD = { BIGGER_BALL: '\u25C9', EXTRA_BALL: '\u271A', BIGGER_RACKET: '\u21D5', FASTER_BALL: '\u00BB', SHRINK_RACKET: '\u2913' };
+  const POWERUP_NAMES = { BIGGER_BALL: 'Big Ball', EXTRA_BALL: 'Extra Ball', BIGGER_RACKET: 'Big Racket', FASTER_BALL: 'Fast Ball', SHRINK_RACKET: 'Shrink Foe' };
+  const MIN_RACKET_HEIGHT = SQUARE_SIZE * 3; // minimum racket height (3 blocks)
+  const MAX_EFFECT_STACKS = 3;  // max concurrent stacks per effect type
+  const MAX_EXTRA_BALLS = 8;    // max extra balls per team
+
+  function updatePowerups() {
+    const now = game.tickCount / TICK_RATE;
+    const freq = settings.powerupFrequency;
+
+    if (now - lastSpawn.day >= freq) {
+      lastSpawn.day = now;
+      spawnPowerup(DAY_COLOR);
+    }
+    if (now - lastSpawn.night >= freq) {
+      lastSpawn.night = now;
+      spawnPowerup(NIGHT_COLOR);
+    }
+
+    for (let idx = powerups.length - 1; idx >= 0; idx--) {
+      const pu = powerups[idx];
+      // Expire after 30s uncollected
+      if (now - pu.spawnTime > 30) { powerups.splice(idx, 1); continue; }
+      pu.pulsePhase += 0.05;
+      const squareColor = squares[pu.gridX] ? squares[pu.gridX][pu.gridY] : null;
+
+      for (const player of [player1, player2]) {
+        const playerColor = player.team === 'day' ? DAY_COLOR : NIGHT_COLOR;
+        if (!settings.freeMovement && squareColor !== playerColor) continue;
+        const aabb = getRotatedAABB(player.cx, player.cy, player.width, player.height, player.angle);
+        const puCx = pu.gridX * SQUARE_SIZE + SQUARE_SIZE / 2;
+        const puCy = pu.gridY * SQUARE_SIZE + SQUARE_SIZE / 2;
+        const margin = SQUARE_SIZE / 2;
+        if (puCx >= aabb.left - margin && puCx <= aabb.right + margin &&
+          puCy >= aabb.top - margin && puCy <= aabb.bottom + margin) {
+          collectPowerup(pu, player);
+          powerups.splice(idx, 1);
+          break;
+        }
+      }
+    }
+
+    // Racket size effects — grow to max compatible size
+    for (const [pl, team] of [[player1, 'day'], [player2, 'night']]) {
+      const growStacks = effectStacks(team, 'BIGGER_RACKET', now);
+      const shrinkStacks = effectStacks(team, 'SHRINK_RACKET', now);
+      let desiredH = growStacks > 0 ? BASE_PLAYER_HEIGHT * Math.pow(BIGGER_RACKET_MULT, growStacks) : BASE_PLAYER_HEIGHT;
+      desiredH -= shrinkStacks * SQUARE_SIZE * 2; // 2 blocks per shrink stack
+      desiredH = Math.max(MIN_RACKET_HEIGHT, desiredH);
+      const canFit = (h) => {
+        if (!isWithinBounds(pl.cx, pl.cy, pl.width, h, pl.angle)) return false;
+        if (settings.freeMovement) return true;
+        const ec = team === 'day' ? NIGHT_COLOR : DAY_COLOR;
+        return isPerimeterValid(pl.cx, pl.cy, pl.width, h, pl.angle, SQUARE_SIZE, ec);
+      };
+      if (desiredH <= pl.height) {
+        // Shrinking always works (smaller always fits)
+        pl.height = desiredH;
+      } else if (canFit(desiredH)) {
+        pl.height = desiredH;
+      } else {
+        // Binary search for max height that fits
+        let lo = pl.height, hi = desiredH;
+        for (let i = 0; i < 10; i++) {
+          const mid = (lo + hi) / 2;
+          if (canFit(mid)) lo = mid; else hi = mid;
+        }
+        pl.height = lo;
+      }
+      // Clamp position using rotated AABB
+      const aabb = getRotatedAABB(pl.cx, pl.cy, pl.width, pl.height, pl.angle);
+      const halfH = (aabb.bottom - aabb.top) / 2;
+      if (pl.cy > CANVAS_SIZE - halfH) pl.cy = CANVAS_SIZE - halfH;
+      if (pl.cy < halfH) pl.cy = halfH;
+    }
+
+    updatePowerupHUD();
+  }
+
+  function spawnPowerup(color) {
+    const candidates = [];
+    for (let i = 0; i < NUM_SQUARES; i++)
+      for (let j = 0; j < NUM_SQUARES; j++)
+        if (squares[i][j] === color) candidates.push({ i, j });
+    if (candidates.length < 5) return;
+    const pos = candidates[Math.floor(Math.random() * candidates.length)];
+    const type = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
+    powerups.push({ type, gridX: pos.i, gridY: pos.j, pulsePhase: Math.random() * Math.PI * 2, spawnTime: game.tickCount / TICK_RATE });
+  }
+
+  function collectPowerup(pu, collector) {
+    const team = collector.team;
+    const now = game.tickCount / TICK_RATE;
+    const dur = settings.powerupDuration;
+    if (pu.type === 'EXTRA_BALL') {
+      const extraCount = balls.filter(b => b.team === team && b.isExtra && now < b.expiresAt).length;
+      if (extraCount >= MAX_EXTRA_BALLS) {
+        // Replace oldest extra ball's expiry to extend duration
+        let oldest = null;
+        for (const b of balls) {
+          if (b.team === team && b.isExtra && (!oldest || b.expiresAt < oldest.expiresAt)) oldest = b;
+        }
+        if (oldest) oldest.expiresAt = now + dur;
+      } else {
+        const startX = team === 'day' ? CANVAS_SIZE * 0.25 : CANVAS_SIZE * 0.75;
+        const extra = makeBall(startX, CANVAS_SIZE / 2,
+          (team === 'day' ? 1 : -1) * BASE_BALL_SPEED,
+          (Math.random() > 0.5 ? 1 : -1) * BASE_BALL_SPEED, team);
+        extra.isExtra = true;
+        extra.expiresAt = now + dur;
+        balls.push(extra);
+      }
+    } else {
+      // SHRINK_RACKET applies to the opponent
+      const effectTeam = pu.type === 'SHRINK_RACKET' ? (team === 'day' ? 'night' : 'day') : team;
+      if (!activeEffects[effectTeam][pu.type]) activeEffects[effectTeam][pu.type] = [];
+      const arr = activeEffects[effectTeam][pu.type];
+      if (arr.length >= MAX_EFFECT_STACKS) {
+        // Replace oldest (earliest expiry) to extend duration
+        let minIdx = 0;
+        for (let i = 1; i < arr.length; i++) { if (arr[i] < arr[minIdx]) minIdx = i; }
+        arr[minIdx] = now + dur;
+      } else {
+        arr.push(now + dur);
+      }
+    }
+
+    // Quick respawn: cap next spawn to POWERUP_RESPAWN_QUICK seconds
+    const sideKey = team;
+    const freq = settings.powerupFrequency;
+    const nextScheduled = lastSpawn[sideKey] + freq;
+    if (nextScheduled - now > POWERUP_RESPAWN_QUICK) {
+      lastSpawn[sideKey] = now - freq + POWERUP_RESPAWN_QUICK;
+    }
+
+    audio.playPowerup();
+    if (settings.effectsEnabled && settings.particles) {
+      const px = pu.gridX * SQUARE_SIZE + SQUARE_SIZE / 2;
+      const py = pu.gridY * SQUARE_SIZE + SQUARE_SIZE / 2;
+      for (let p = 0; p < 10; p++) particles.push(makeParticle(px, py, ACCENT));
+      if (settings.screenShake) screenShake.intensity = Math.max(screenShake.intensity, 4);
+    }
+  }
+
+  function updatePowerupHUD() {
+    const now = game.tickCount / TICK_RATE;
+    for (const [team, el, pKey] of [['day', dayPowerupsEl, 'p1'], ['night', nightPowerupsEl, 'p2']]) {
+      let html = '';
+      for (const type of POWERUP_TYPES) {
+        const stacks = effectStacks(team, type, now);
+        if (stacks > 0) html += `<span class="powerup-icon" title="${POWERUP_NAMES[type]}${stacks > 1 ? ' x' + stacks : ''}">${POWERUP_HUD[type]}${stacks > 1 ? stacks : ''}</span>`;
+      }
+      if (balls.some(b => b.team === team && b.isExtra && now < b.expiresAt))
+        html += `<span class="powerup-icon" title="Extra Ball">\u271A</span>`;
+      // Teleport charges
+      const ts = teleportState[pKey];
+      if (ts.remaining > 0) {
+        const charging = ts.holdFrames > 0;
+        const pct = charging ? Math.round(ts.holdFrames / TELEPORT_HOLD_FRAMES * 100) : 0;
+        const style = charging ? 'opacity:1' : 'opacity:0.45';
+        html += `<span class="powerup-icon" title="Teleport (L+R 3s) x${ts.remaining}${charging ? ' — ' + pct + '%' : ''}" style="${style}">\u21CC${ts.remaining}</span>`;
+      }
+      el.innerHTML = html;
+    }
+  }
+
+  // ==================== SCORE & WIN ====================
+  function updateScoreHUD() {
+    dayScoreEl.textContent = dayScore;
+    nightScoreEl.textContent = nightScore;
+    // Progression bar
+    const bar = document.getElementById('progression-bar');
+    const showBar = settings.progressionBar && (settings.winCondition === 'combined' || settings.winCondition === 'domination');
+    bar.style.display = showBar ? 'flex' : 'none';
+    if (showBar) {
+      // Scale so 100% = reaching domination threshold, centered at 50%
+      const threshold = DOMINATION_THRESHOLD; // e.g. 0.75
+      const dayRaw = dayScore / TOTAL_SQUARES;
+      // Map: 0.5 -> 50%, threshold -> 100%, (1-threshold) -> 0%
+      const range = threshold - 0.5; // e.g. 0.25
+      const dayPct = Math.max(0, Math.min(100, 50 + (dayRaw - 0.5) / range * 50));
+      document.getElementById('prog-day').style.width = dayPct + '%';
+      document.getElementById('prog-night').style.width = (100 - dayPct) + '%';
+    }
+  }
+
+  function checkWinCondition() {
+    const now = game.tickCount / TICK_RATE;
+    if (settings.winCondition !== 'domination') {
+      game.timeRemaining = Math.max(0, settings.duration - now);
+      timerEl.textContent = formatTime(game.timeRemaining);
+    } else {
+      timerEl.textContent = '';
+    }
+
+    const dayPct = dayScore / TOTAL_SQUARES, nightPct = nightScore / TOTAL_SQUARES;
+    if (settings.winCondition === 'combined' || settings.winCondition === 'domination') {
+      if (dayPct >= DOMINATION_THRESHOLD) { triggerWin('day', true); return; }
+      if (nightPct >= DOMINATION_THRESHOLD) { triggerWin('night', true); return; }
+    }
+    if (settings.winCondition !== 'domination' && game.timeRemaining <= 0) {
+      triggerWin(dayScore > nightScore ? 'day' : nightScore > dayScore ? 'night' : 'draw');
+    }
+  }
+
+  function triggerWin(winner, isDomination) {
+    game.state = 'gameover';
+    game.winner = winner;
+    audio.playWin();
+    if (settings.effectsEnabled && settings.particles) {
+      const colors = winner === 'day' ? [DAY_COLOR, ACCENT, colorPalette.ArcticPowder]
+        : winner === 'night' ? [NIGHT_COLOR, '#4488aa', '#2a6070']
+          : [DAY_COLOR, NIGHT_COLOR, ACCENT];
+      for (let i = 0; i < 80; i++)
+        particles.push(makeConfetti(CANVAS_SIZE * Math.random(), CANVAS_SIZE * 0.3 * Math.random(),
+          colors[Math.floor(Math.random() * colors.length)]));
+    }
+    setTimeout(() => {
+      const dayPctRaw = dayScore / TOTAL_SQUARES * 100;
+      const nightPctRaw = nightScore / TOTAL_SQUARES * 100;
+      const dayR = Math.round(dayPctRaw), nightR = Math.round(nightPctRaw);
+      const scoreEl = document.getElementById('final-score');
+      const titleEl = document.getElementById('winner-text');
+      titleEl.style.color = '#D9E8E3';
+
+      if (winner === 'draw' || (dayR === 50 && nightR === 50)) {
+        titleEl.textContent = "IT'S A DRAW!";
+        scoreEl.textContent = '';
+      } else if (isDomination) {
+        titleEl.textContent = `${winner.toUpperCase()} DOMINATES!`;
+        scoreEl.textContent = '';
+      } else {
+        titleEl.textContent = `${winner.toUpperCase()} WINS!`;
+        const winR = winner === 'day' ? dayR : nightR;
+        scoreEl.textContent = `${winR}% domination`;
+      }
+      document.getElementById('gameover').classList.remove('hidden');
+    }, 1400);
+  }
+
+  // ==================== EFFECTS ====================
+  function makeParticle(x, y, color) {
+    return { x, y, vx: (Math.random() - 0.5) * 8, vy: (Math.random() - 0.5) * 8,
+      color, life: 1, decay: 0.03 + Math.random() * 0.03, size: 3 + Math.random() * 4 };
+  }
+  function makeConfetti(x, y, color) {
+    return { x, y, vx: (Math.random() - 0.5) * 12, vy: -Math.random() * 10 - 2,
+      gravity: 0.15, color, life: 1, decay: 0.004 + Math.random() * 0.006,
+      size: 4 + Math.random() * 8, rotation: Math.random() * Math.PI * 2,
+      rotSpeed: (Math.random() - 0.5) * 0.15 };
+  }
+
+  function updateParticles() {
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx; p.y += p.vy;
+      if (p.gravity) p.vy += p.gravity;
+      if (p.rotation !== undefined) p.rotation += p.rotSpeed;
+      p.life -= p.decay;
+      if (p.life <= 0) { particles[i] = particles[particles.length - 1]; particles.pop(); }
+    }
+    for (let i = ballTrails.length - 1; i >= 0; i--) {
+      ballTrails[i].life -= 0.08;
+      if (ballTrails[i].life <= 0) { ballTrails[i] = ballTrails[ballTrails.length - 1]; ballTrails.pop(); }
+    }
+    if (screenShake.intensity > 0) {
+      screenShake.intensity *= 0.88;
+      if (screenShake.intensity < 0.3) screenShake.intensity = 0;
+    }
+  }
+
+  // ==================== RENDERING ====================
+  function drawStar(cx, cy, outerR, innerR, points) {
     ctx.beginPath();
-    ctx.arc(x, y, SQUARE_SIZE / 2, 0, Math.PI * 2, false);
-    ctx.fillStyle = color;
-    ctx.fill();
+    for (let i = 0; i < points * 2; i++) {
+      const a = (i * Math.PI / points) - Math.PI / 2;
+      const r = i % 2 === 0 ? outerR : innerR;
+      if (i === 0) ctx.moveTo(cx + r * Math.cos(a), cy + r * Math.sin(a));
+      else ctx.lineTo(cx + r * Math.cos(a), cy + r * Math.sin(a));
+    }
     ctx.closePath();
   }
 
-  function drawSquares() {
-    for (let i = 0; i < numSquaresX; i++) {
-      for (let j = 0; j < numSquaresY; j++) {
+  function drawSun(cx, cy, r, rays) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.45, 0, Math.PI * 2);
+    ctx.fill();
+    for (let i = 0; i < rays; i++) {
+      const a = (i / rays) * Math.PI * 2;
+      const spread = 0.18;
+      ctx.beginPath();
+      ctx.moveTo(cx + r * 0.48 * Math.cos(a - spread), cy + r * 0.48 * Math.sin(a - spread));
+      ctx.lineTo(cx + r * Math.cos(a), cy + r * Math.sin(a));
+      ctx.lineTo(cx + r * 0.48 * Math.cos(a + spread), cy + r * 0.48 * Math.sin(a + spread));
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  function drawPowerupIcon(cx, cy, type, size) {
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = size * 0.08;
+    const s = size * 0.28;
+    switch (type) {
+      case 'BIGGER_BALL':
+        ctx.beginPath(); ctx.arc(cx, cy, s * 0.35, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(cx, cy, s * 0.75, 0, Math.PI * 2); ctx.stroke();
+        break;
+      case 'EXTRA_BALL':
+        const bw = s * 0.22, bl = s * 0.7;
+        ctx.fillRect(cx - bw, cy - bl, bw * 2, bl * 2);
+        ctx.fillRect(cx - bl, cy - bw, bl * 2, bw * 2);
+        break;
+      case 'BIGGER_RACKET':
+        ctx.fillRect(cx - s * 0.12, cy - s * 0.55, s * 0.24, s * 1.1);
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - s * 0.85); ctx.lineTo(cx - s * 0.3, cy - s * 0.5); ctx.lineTo(cx + s * 0.3, cy - s * 0.5);
+        ctx.closePath(); ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(cx, cy + s * 0.85); ctx.lineTo(cx - s * 0.3, cy + s * 0.5); ctx.lineTo(cx + s * 0.3, cy + s * 0.5);
+        ctx.closePath(); ctx.fill();
+        break;
+      case 'FASTER_BALL':
+        ctx.lineWidth = size * 0.1; ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(cx - s * 0.45, cy - s * 0.45);
+        ctx.lineTo(cx + s * 0.05, cy);
+        ctx.lineTo(cx - s * 0.45, cy + s * 0.45);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - s * 0.45);
+        ctx.lineTo(cx + s * 0.5, cy);
+        ctx.lineTo(cx, cy + s * 0.45);
+        ctx.stroke();
+        ctx.lineCap = 'butt';
+        break;
+      case 'SHRINK_RACKET':
+        // Inward arrows (shrinking)
+        ctx.fillRect(cx - s * 0.12, cy - s * 0.55, s * 0.24, s * 1.1);
+        ctx.beginPath();
+        ctx.moveTo(cx, cy + s * 0.25); ctx.lineTo(cx - s * 0.3, cy - s * 0.1); ctx.lineTo(cx + s * 0.3, cy - s * 0.1);
+        ctx.closePath(); ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - s * 0.25); ctx.lineTo(cx - s * 0.3, cy + s * 0.1); ctx.lineTo(cx + s * 0.3, cy + s * 0.1);
+        ctx.closePath(); ctx.fill();
+        break;
+    }
+  }
+
+  function render() {
+    ctx.save();
+    if (settings.effectsEnabled && settings.screenShake && screenShake.intensity > 0) {
+      ctx.translate((Math.random() - 0.5) * screenShake.intensity, (Math.random() - 0.5) * screenShake.intensity);
+    }
+    ctx.clearRect(-10, -10, CANVAS_SIZE + 20, CANVAS_SIZE + 20);
+
+    // Squares
+    for (let i = 0; i < NUM_SQUARES; i++)
+      for (let j = 0; j < NUM_SQUARES; j++) {
         ctx.fillStyle = squares[i][j];
-        ctx.fillRect(
-          i * SQUARE_SIZE,
-          j * SQUARE_SIZE,
-          SQUARE_SIZE,
-          SQUARE_SIZE
-        );
+        ctx.fillRect(i * SQUARE_SIZE, j * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE);
       }
+
+    // Grid lines
+    if (settings.effectsEnabled && settings.gridEffect) {
+      ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+      ctx.lineWidth = 0.5;
+      for (let i = 0; i <= NUM_SQUARES; i++) {
+        ctx.beginPath(); ctx.moveTo(i * SQUARE_SIZE, 0); ctx.lineTo(i * SQUARE_SIZE, CANVAS_SIZE); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, i * SQUARE_SIZE); ctx.lineTo(CANVAS_SIZE, i * SQUARE_SIZE); ctx.stroke();
+      }
+    }
+
+    // Ball trails
+    if (settings.effectsEnabled && settings.particles) {
+      for (const t of ballTrails) {
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, t.radius * t.life, 0, Math.PI * 2);
+        ctx.fillStyle = t.color; ctx.globalAlpha = t.life * 0.25;
+        ctx.fill(); ctx.closePath();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // Powerups (stars for night territory, suns for day territory)
+    for (const pu of powerups) {
+      const px = pu.gridX * SQUARE_SIZE + SQUARE_SIZE / 2;
+      const py = pu.gridY * SQUARE_SIZE + SQUARE_SIZE / 2;
+      const pulse = 0.7 + 0.3 * Math.sin(pu.pulsePhase);
+      const onDaySide = squares[pu.gridX] && squares[pu.gridX][pu.gridY] === DAY_COLOR;
+      const puColor = onDaySide ? '#E8A820' : '#E8A820'; // yellow for both (stands out on both)
+      const glowColor = onDaySide ? 'rgba(232,168,32,' : 'rgba(232,168,32,';
+
+      // Glow
+      if (settings.effectsEnabled && settings.particles) {
+        ctx.beginPath();
+        ctx.arc(px, py, POWERUP_VISUAL_RADIUS * pulse * 1.1, 0, Math.PI * 2);
+        ctx.fillStyle = glowColor + (0.12 * pulse) + ')';
+        ctx.fill();
+      }
+
+      // Shape
+      ctx.fillStyle = puColor;
+      if (onDaySide) {
+        drawSun(px, py, POWERUP_VISUAL_RADIUS * 0.6, 10);
+      } else {
+        drawStar(px, py, POWERUP_VISUAL_RADIUS * 0.6, POWERUP_VISUAL_RADIUS * 0.25, 5);
+        ctx.fill();
+      }
+
+      // Icon
+      drawPowerupIcon(px, py, pu.type, POWERUP_VISUAL_RADIUS);
+    }
+
+    // Players
+    drawRotatedPlayer(player1, DAY_BALL_COLOR);
+    drawRotatedPlayer(player2, NIGHT_BALL_COLOR);
+
+    // Balls
+    for (const ball of balls) {
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+      ctx.fillStyle = ball.ballColor; ctx.fill(); ctx.closePath();
+      if (ball.radius > BASE_BALL_RADIUS) {
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+        ctx.strokeStyle = ACCENT; ctx.lineWidth = 1; ctx.stroke(); ctx.closePath();
+      }
+    }
+
+    // Particles
+    if (settings.effectsEnabled && settings.particles) {
+      for (const p of particles) {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, p.life);
+        if (p.rotation !== undefined) {
+          ctx.translate(p.x, p.y); ctx.rotate(p.rotation);
+          ctx.fillStyle = p.color;
+          ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+        } else {
+          ctx.fillStyle = p.color;
+          ctx.beginPath(); ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawRotatedPlayer(player, fillColor) {
+    ctx.save();
+    ctx.translate(player.cx, player.cy);
+    ctx.rotate(player.angle);
+    ctx.fillStyle = fillColor;
+    ctx.fillRect(-player.width / 2, -player.height / 2, player.width, player.height);
+    if (settings.effectsEnabled && settings.racketOutline) {
+      ctx.strokeStyle = ACCENT;
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(-player.width / 2, -player.height / 2, player.width, player.height);
+    }
+    ctx.restore();
+  }
+
+  // ==================== GAME LOOP ====================
+  let lastFrameTime = 0, accumulator = 0;
+
+  function gameLoop(timestamp) {
+    requestAnimationFrame(gameLoop);
+    if (!lastFrameTime) lastFrameTime = timestamp;
+    const delta = Math.min(timestamp - lastFrameTime, 100);
+    lastFrameTime = timestamp;
+
+    if (game.state === 'gameover') { updateParticles(); render(); return; }
+    if (game.state !== 'playing') return;
+
+    accumulator += delta;
+    while (accumulator >= TICK_MS) {
+      game.tickCount++;
+      updatePlayers();
+      updateBalls();
+      updatePowerups();
+      updateScoreHUD();
+      checkWinCondition();
+      if (game.state !== 'playing') break;
+      accumulator -= TICK_MS;
+    }
+    updateParticles();
+    render();
+  }
+
+  // ==================== INPUT SETUP ====================
+  function normalizeKey(k) { return k.length === 1 ? k.toLowerCase() : k; }
+
+  document.addEventListener('keydown', e => {
+    const key = normalizeKey(e.key);
+    keys[key] = true;
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(key)) e.preventDefault();
+    if (listeningBtn) { handleKeyBindPress(e); return; }
+    if (key === 'Escape') {
+      if (game.state === 'playing' || game.state === 'paused') togglePause();
+      else if (!document.getElementById('keybind-overlay').classList.contains('hidden')) closeKeybindUI();
+      else if (!document.getElementById('settings-overlay').classList.contains('hidden')) closeSettings();
+    }
+    if (key === ' ' && game.state === 'menu') startGame();
+  });
+  document.addEventListener('keyup', e => { keys[normalizeKey(e.key)] = false; });
+
+  function togglePause() {
+    if (game.state === 'playing') {
+      game.state = 'paused';
+      document.getElementById('pause-overlay').classList.remove('hidden');
+    } else if (game.state === 'paused') {
+      game.state = 'playing';
+      document.getElementById('pause-overlay').classList.add('hidden');
+      document.getElementById('settings-overlay').classList.add('hidden');
     }
   }
 
-  function drawPlayer(player, color) {
-    ctx.fillStyle = color;
-    ctx.fillRect(player.x, player.y, player.width, player.height);
+  // Joystick
+  function setupJoystick(areaId, knobId, pKey) {
+    const area = document.getElementById(areaId);
+    const knob = document.getElementById(knobId);
+    if (!area || !knob) return;
+    let origin = null;
+    area.addEventListener('touchstart', e => {
+      e.preventDefault(); e.stopPropagation(); audio.init(); audio.resume();
+      origin = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    }, { passive: false });
+    area.addEventListener('touchmove', e => {
+      e.preventDefault(); e.stopPropagation();
+      if (!origin) return;
+      const dx = e.touches[0].clientX - origin.x, dy = e.touches[0].clientY - origin.y;
+      const maxD = 22;
+      const cx = Math.max(-maxD, Math.min(maxD, dx));
+      const cy = Math.max(-maxD, Math.min(maxD, dy));
+      knob.style.transform = `translate(calc(-50% + ${cx}px), calc(-50% + ${cy}px))`;
+      joystickInput[pKey] = { dx: cx / maxD, dy: cy / maxD };
+    }, { passive: false });
+    const end = () => { origin = null; knob.style.transform = 'translate(-50%, -50%)'; joystickInput[pKey] = null; };
+    area.addEventListener('touchend', e => { e.preventDefault(); end(); }, { passive: false });
+    area.addEventListener('touchcancel', e => { e.preventDefault(); end(); }, { passive: false });
   }
 
-  function isIntersecting(squareX, squareY, player) {
-    const squareRect = {
-      left: squareX * SQUARE_SIZE,
-      top: squareY * SQUARE_SIZE,
-      right: (squareX * SQUARE_SIZE) + SQUARE_SIZE,
-      bottom: (squareY * SQUARE_SIZE) + SQUARE_SIZE
+  function setupRotateBtn(btnId, key) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.addEventListener('touchstart', e => {
+      e.preventDefault(); e.stopPropagation();
+      mobileRotate[key] = true; btn.classList.add('pressed');
+    }, { passive: false });
+    const up = e => { e.preventDefault(); mobileRotate[key] = false; btn.classList.remove('pressed'); };
+    btn.addEventListener('touchend', up, { passive: false });
+    btn.addEventListener('touchcancel', up, { passive: false });
+  }
+
+  // ==================== KEYBINDING UI ====================
+  let listeningBtn = null;
+
+  function keyDisplayName(key) {
+    const m = { ArrowUp: '\u2191', ArrowDown: '\u2193', ArrowLeft: '\u2190', ArrowRight: '\u2192',
+      ' ': 'Space', Escape: 'Esc', ',': ',', '.': '.' };
+    return m[key] || (key.length === 1 ? key.toUpperCase() : key);
+  }
+
+  function buildKeyBindUI() {
+    const grid = document.getElementById('keybind-grid');
+    grid.innerHTML = '';
+    for (const [pKey, label] of [['p1', 'Player 1 (Day)'], ['p2', 'Player 2 (Night)']]) {
+      const sec = document.createElement('div');
+      sec.className = 'keybind-section';
+      sec.innerHTML = `<h3>${label}</h3>`;
+      for (const [action, name] of [['up', 'Up'], ['down', 'Down'], ['left', 'Left'], ['right', 'Right'], ['rotL', 'Rotate \u21BA'], ['rotR', 'Rotate \u21BB']]) {
+        const row = document.createElement('div');
+        row.className = 'keybind-row';
+        row.innerHTML = `<span>${name}</span><button class="keybind-btn" data-player="${pKey}" data-action="${action}">${keyDisplayName(keyBindings[pKey][action])}</button>`;
+        row.querySelector('.keybind-btn').addEventListener('click', function () { startListening(this); });
+        sec.appendChild(row);
+      }
+      grid.appendChild(sec);
+    }
+  }
+
+  function startListening(btn) {
+    if (listeningBtn) { listeningBtn.classList.remove('listening'); restoreListeningBtn(); }
+    listeningBtn = btn;
+    btn.classList.add('listening');
+    btn.textContent = '...';
+  }
+
+  function restoreListeningBtn() {
+    if (!listeningBtn) return;
+    const p = listeningBtn.dataset.player, a = listeningBtn.dataset.action;
+    listeningBtn.textContent = keyDisplayName(keyBindings[p][a]);
+    listeningBtn.classList.remove('listening');
+    listeningBtn = null;
+  }
+
+  function handleKeyBindPress(e) {
+    e.preventDefault(); e.stopPropagation();
+    if (e.key === 'Escape') { restoreListeningBtn(); return; }
+    const p = listeningBtn.dataset.player, a = listeningBtn.dataset.action;
+    keyBindings[p][a] = normalizeKey(e.key);
+    listeningBtn.textContent = keyDisplayName(normalizeKey(e.key));
+    listeningBtn.classList.remove('listening');
+    listeningBtn = null;
+    saveSettings();
+    updateControlsHelp();
+  }
+
+  function openKeybindUI() {
+    buildKeyBindUI();
+    document.getElementById('keybind-overlay').classList.remove('hidden');
+  }
+  function closeKeybindUI() {
+    if (listeningBtn) restoreListeningBtn();
+    document.getElementById('keybind-overlay').classList.add('hidden');
+  }
+
+  function updateControlsHelp() {
+    const b = keyBindings;
+    const el = document.getElementById('desktop-controls-help');
+    if (el) {
+      el.innerHTML = `P1: ${keyDisplayName(b.p1.up)} ${keyDisplayName(b.p1.left)} ${keyDisplayName(b.p1.down)} ${keyDisplayName(b.p1.right)} + ${keyDisplayName(b.p1.rotL)}/${keyDisplayName(b.p1.rotR)} rotate &bull; P2: ${keyDisplayName(b.p2.up)} ${keyDisplayName(b.p2.left)} ${keyDisplayName(b.p2.down)} ${keyDisplayName(b.p2.right)} + ${keyDisplayName(b.p2.rotL)}/${keyDisplayName(b.p2.rotR)} rotate<br><a id="config-keys-link">Configure Keys</a> &bull; <a id="menu-settings-link">&#x2699; Settings</a> &bull; ESC: Pause`;
+      document.getElementById('config-keys-link').addEventListener('click', openKeybindUI);
+      document.getElementById('menu-settings-link').addEventListener('click', () => openSettings('menu'));
+    }
+  }
+
+  // ==================== SETTINGS UI ====================
+  function openSettings(from) {
+    settingsReturnTo = from || 'menu';
+    const isInGame = game.state === 'playing' || game.state === 'paused';
+    if (game.state === 'playing') {
+      game.state = 'paused';
+      document.getElementById('pause-overlay').classList.add('hidden');
+    }
+
+    // Grey out game-logic settings when in-game
+    document.querySelectorAll('.game-logic-setting').forEach(el => {
+      el.classList.toggle('disabled', isInGame);
+    });
+
+    syncSettingsUI();
+    document.getElementById('settings-overlay').classList.remove('hidden');
+  }
+
+  function closeSettings() {
+    document.getElementById('settings-overlay').classList.add('hidden');
+    saveSettings();
+    if (settingsReturnTo === 'playing') {
+      game.state = 'playing';
+    } else if (settingsReturnTo === 'pause') {
+      document.getElementById('pause-overlay').classList.remove('hidden');
+    }
+    // 'menu' — menu is already showing
+  }
+
+  function syncSettingsUI() {
+    // Sound
+    setToggle('snd-toggle', settings.soundEnabled ? 'on' : 'off');
+    document.getElementById('volume-slider').value = settings.soundVolume;
+    document.getElementById('volume-label').textContent = settings.soundVolume + '%';
+
+    // FX
+    setToggle('fx-master', settings.effectsEnabled ? 'on' : 'off');
+    setToggle('fx-shake', settings.screenShake ? 'on' : 'off');
+    setToggle('fx-outline', settings.racketOutline ? 'on' : 'off');
+    setToggle('fx-grid', settings.gridEffect ? 'on' : 'off');
+    setToggle('fx-particles', settings.particles ? 'on' : 'off');
+    setToggle('fx-progbar', settings.progressionBar ? 'on' : 'off');
+    document.getElementById('fx-sub').style.opacity = settings.effectsEnabled ? '1' : '0.35';
+    document.getElementById('fx-sub').style.pointerEvents = settings.effectsEnabled ? 'auto' : 'none';
+
+    // Powerups
+    document.getElementById('pu-freq-slider').value = settings.powerupFrequency;
+    document.getElementById('pu-freq-label').textContent = settings.powerupFrequency + 's';
+    document.getElementById('pu-dur-slider').value = settings.powerupDuration;
+    document.getElementById('pu-dur-label').textContent = settings.powerupDuration + 's';
+
+    // Gameplay
+    setToggle('free-move-toggle', settings.freeMovement ? 'on' : 'off');
+  }
+
+  function setToggle(groupId, value) {
+    const group = document.getElementById(groupId);
+    if (!group) return;
+    group.querySelectorAll('button').forEach(b => {
+      b.classList.toggle('active', b.dataset.value === value);
+    });
+  }
+
+  function setupSettingsUI() {
+    // Toggle groups in settings
+    const settingsToggles = {
+      'snd-toggle': v => { settings.soundEnabled = v === 'on'; },
+      'fx-master': v => {
+        settings.effectsEnabled = v === 'on';
+        document.getElementById('fx-sub').style.opacity = v === 'on' ? '1' : '0.35';
+        document.getElementById('fx-sub').style.pointerEvents = v === 'on' ? 'auto' : 'none';
+      },
+      'fx-shake': v => { settings.screenShake = v === 'on'; },
+      'fx-outline': v => { settings.racketOutline = v === 'on'; },
+      'fx-grid': v => { settings.gridEffect = v === 'on'; },
+      'fx-particles': v => { settings.particles = v === 'on'; },
+      'fx-progbar': v => { settings.progressionBar = v === 'on'; },
+      'free-move-toggle': v => { settings.freeMovement = v === 'on'; },
     };
-    const playerRect = {
-      left: player.x,
-      top: player.y,
-      right: player.x + player.width,
-      bottom: player.y + player.height
+
+    for (const [id, handler] of Object.entries(settingsToggles)) {
+      const group = document.getElementById(id);
+      if (!group) continue;
+      group.querySelectorAll('button').forEach(btn => {
+        btn.addEventListener('click', () => {
+          group.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          handler(btn.dataset.value);
+          saveSettings();
+        });
+      });
+    }
+
+    // Sliders
+    const volSlider = document.getElementById('volume-slider');
+    volSlider.addEventListener('input', () => {
+      const v = parseInt(volSlider.value);
+      audio.setVolume(v);
+      document.getElementById('volume-label').textContent = v + '%';
+      saveSettings();
+    });
+
+    const freqSlider = document.getElementById('pu-freq-slider');
+    freqSlider.addEventListener('input', () => {
+      settings.powerupFrequency = parseInt(freqSlider.value);
+      document.getElementById('pu-freq-label').textContent = settings.powerupFrequency + 's';
+      saveSettings();
+    });
+
+    const durSlider = document.getElementById('pu-dur-slider');
+    durSlider.addEventListener('input', () => {
+      settings.powerupDuration = parseInt(durSlider.value);
+      document.getElementById('pu-dur-label').textContent = settings.powerupDuration + 's';
+      saveSettings();
+    });
+
+    // Reset buttons
+    const resetMap = {
+      soundEnabled: () => { settings.soundEnabled = DEFAULT_ADV.soundEnabled; syncSettingsUI(); saveSettings(); },
+      soundVolume: () => { settings.soundVolume = DEFAULT_ADV.soundVolume; audio.setVolume(settings.soundVolume); syncSettingsUI(); saveSettings(); },
+      effectsEnabled: () => { settings.effectsEnabled = DEFAULT_ADV.effectsEnabled; syncSettingsUI(); saveSettings(); },
+      screenShake: () => { settings.screenShake = DEFAULT_ADV.screenShake; syncSettingsUI(); saveSettings(); },
+      racketOutline: () => { settings.racketOutline = DEFAULT_ADV.racketOutline; syncSettingsUI(); saveSettings(); },
+      gridEffect: () => { settings.gridEffect = DEFAULT_ADV.gridEffect; syncSettingsUI(); saveSettings(); },
+      particles: () => { settings.particles = DEFAULT_ADV.particles; syncSettingsUI(); saveSettings(); },
+      progressionBar: () => { settings.progressionBar = DEFAULT_ADV.progressionBar; syncSettingsUI(); saveSettings(); },
+      powerupFrequency: () => { settings.powerupFrequency = DEFAULT_ADV.powerupFrequency; syncSettingsUI(); saveSettings(); },
+      powerupDuration: () => { settings.powerupDuration = DEFAULT_ADV.powerupDuration; syncSettingsUI(); saveSettings(); },
+      freeMovement: () => { settings.freeMovement = DEFAULT_ADV.freeMovement; syncSettingsUI(); saveSettings(); },
     };
 
-    return !(squareRect.right < playerRect.left ||
-      squareRect.left > playerRect.right ||
-      squareRect.bottom < playerRect.top ||
-      squareRect.top > playerRect.bottom);
+    document.querySelectorAll('.reset-btn[data-key]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = btn.dataset.key;
+        if (resetMap[key]) resetMap[key]();
+      });
+    });
+
+    // Close / open
+    document.getElementById('close-settings-btn').addEventListener('click', closeSettings);
+    document.getElementById('settings-keys-btn').addEventListener('click', () => {
+      document.getElementById('settings-overlay').classList.add('hidden');
+      openKeybindUI();
+    });
+
+    // Gear button
+    document.getElementById('gear-btn').addEventListener('click', () => {
+      audio.init(); audio.resume();
+      if (game.state === 'playing') {
+        openSettings('playing');
+      } else if (game.state === 'paused') {
+        document.getElementById('pause-overlay').classList.add('hidden');
+        openSettings('pause');
+      } else if (game.state === 'menu') {
+        openSettings('menu');
+      } else if (game.state === 'gameover') {
+        openSettings('menu');
+      }
+    });
+
+    // Pause settings button
+    document.getElementById('pause-settings-btn').addEventListener('click', () => {
+      document.getElementById('pause-overlay').classList.add('hidden');
+      openSettings('pause');
+    });
   }
 
-  function updateSquareAndBounce(x, y, dx, dy, color, opponent) {
-    let updatedDx = dx;
-    let updatedDy = dy;
+  // ==================== MENU LOGIC ====================
+  function setupMenu() {
+    document.querySelectorAll('#menu .toggle-group').forEach(group => {
+      group.querySelectorAll('button').forEach(btn => {
+        btn.addEventListener('click', () => {
+          group.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          handleOptionChange(group.id, btn.dataset.value);
+        });
+      });
+    });
 
-    for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 4) {
-      let checkX = x + Math.cos(angle) * (SQUARE_SIZE / 2);
-      let checkY = y + Math.sin(angle) * (SQUARE_SIZE / 2);
-
-      let i = Math.floor(checkX / SQUARE_SIZE);
-      let j = Math.floor(checkY / SQUARE_SIZE);
-
-      if (i >= 0 && i < numSquaresX && j >= 0 && j < numSquaresY) {
-        // Determine bounce direction first, irrespective of player position
-        if (squares[i][j] !== color) {
-          if (Math.abs(Math.cos(angle)) > Math.abs(Math.sin(angle))) {
-            updatedDx = -updatedDx;
-          } else {
-            updatedDy = -updatedDy;
-          }
-        }
-
-        // Then, change the square's color if it does not intersect with the opponent
-        if (!isIntersecting(i, j, opponent) && squares[i][j] !== color) {
-          squares[i][j] = color;
+    const slider = document.getElementById('duration-slider');
+    const label = document.getElementById('duration-label');
+    slider.addEventListener('input', () => {
+      settings.duration = parseInt(slider.value);
+      label.textContent = formatTime(settings.duration);
+    });
+    // Hidden feature: click duration label to enter arbitrary time
+    label.addEventListener('click', () => {
+      const input = prompt('Enter duration in seconds:', settings.duration);
+      if (input !== null) {
+        const val = parseInt(input);
+        if (val > 0) {
+          settings.duration = val;
+          slider.max = Math.max(300, val);
+          slider.value = val;
+          label.textContent = formatTime(val);
         }
       }
-    }
+    });
 
-    return { dx: updatedDx, dy: updatedDy };
+    document.getElementById('start-btn').addEventListener('click', startGame);
+    document.getElementById('play-again-btn').addEventListener('click', startGame);
+    document.getElementById('menu-btn').addEventListener('click', showMenu);
+    document.getElementById('resume-btn').addEventListener('click', togglePause);
+    document.getElementById('quit-btn').addEventListener('click', showMenu);
+    document.getElementById('config-keys-link').addEventListener('click', openKeybindUI);
+    document.getElementById('close-keys-btn').addEventListener('click', closeKeybindUI);
+    document.getElementById('reset-keys-btn').addEventListener('click', () => {
+      keyBindings = JSON.parse(JSON.stringify(DEFAULT_BINDINGS));
+      saveSettings(); buildKeyBindUI(); updateControlsHelp();
+    });
+
+    // Menu settings links
+    const msl = document.getElementById('menu-settings-link');
+    if (msl) msl.addEventListener('click', () => openSettings('menu'));
+    const mslm = document.getElementById('menu-settings-link-mobile');
+    if (mslm) mslm.addEventListener('click', () => openSettings('menu'));
   }
 
-  function updateScoreElement() {
-    let dayScore = 0;
-    let nightScore = 0;
-    for (let i = 0; i < numSquaresX; i++) {
-      for (let j = 0; j < numSquaresY; j++) {
-        if (squares[i][j] === DAY_COLOR) {
-          dayScore++;
-        } else if (squares[i][j] === NIGHT_COLOR) {
-          nightScore++;
-        }
-      }
+  function handleOptionChange(groupId, value) {
+    switch (groupId) {
+      case 'mode-select':
+        settings.mode = value;
+        document.getElementById('ai-options').classList.toggle('hidden', value !== 'ai');
+        document.body.classList.toggle('ai-mode', value === 'ai');
+        break;
+      case 'difficulty-select': settings.aiDifficulty = value; break;
+      case 'win-select':
+        settings.winCondition = value;
+        document.getElementById('duration-options').classList.toggle('hidden', value === 'domination');
+        break;
     }
-
-    scoreElement.textContent = `day ${dayScore} | night ${nightScore}`;
   }
 
-  function checkBoundaryCollision(x, y, dx, dy) {
-    if (x + dx > canvas.width - SQUARE_SIZE / 2 || x + dx < SQUARE_SIZE / 2) {
-      dx = -dx;
-    }
-    if (
-      y + dy > canvas.height - SQUARE_SIZE / 2 ||
-      y + dy < SQUARE_SIZE / 2
-    ) {
-      dy = -dy;
-    }
-
-    return { dx: dx, dy: dy };
+  function showMenu() {
+    game.state = 'menu';
+    document.getElementById('menu').classList.remove('hidden');
+    document.getElementById('gameover').classList.add('hidden');
+    document.getElementById('pause-overlay').classList.add('hidden');
+    document.getElementById('settings-overlay').classList.add('hidden');
   }
 
-  function draw() {
-    updatePlayers(); // Update player positions based on key states
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    drawSquares();
-    drawPlayer(player1, DAY_BALL_COLOR);
-    drawPlayer(player2, NIGHT_BALL_COLOR);
-
-    drawBall(x1, y1, DAY_BALL_COLOR);
-    let bounce1 = updateSquareAndBounce(x1, y1, dx1, dy1, DAY_COLOR, player2); // For ball 1, opponent is player 2
-    dx1 = bounce1.dx;
-    dy1 = bounce1.dy;
-
-    drawBall(x2, y2, NIGHT_BALL_COLOR);
-    let bounce2 = updateSquareAndBounce(x2, y2, dx2, dy2, NIGHT_COLOR, player1); // For ball 2, opponent is player 1
-    dx2 = bounce2.dx;
-    dy2 = bounce2.dy;
-
-    let boundary1 = checkBoundaryCollision(x1, y1, dx1, dy1);
-    dx1 = boundary1.dx;
-    dy1 = boundary1.dy;
-
-    let boundary2 = checkBoundaryCollision(x2, y2, dx2, dy2);
-    dx2 = boundary2.dx;
-    dy2 = boundary2.dy;
-
-    x1 += dx1;
-    y1 += dy1;
-    x2 += dx2;
-    y2 += dy2;
-
-    updateScoreElement();
-
-    requestAnimationFrame(draw);
+  function formatTime(s) {
+    return `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`;
   }
 
-  requestAnimationFrame(draw);
+  // ==================== GAME INIT ====================
+  function makeBall(x, y, dx, dy, team) {
+    return { x, y, dx, dy, team,
+      paintColor: team === 'day' ? DAY_COLOR : NIGHT_COLOR,
+      ballColor: team === 'day' ? DAY_BALL_COLOR : NIGHT_BALL_COLOR,
+      radius: BASE_BALL_RADIUS, isExtra: false, expiresAt: Infinity,
+      skipSquareCheck: 0,
+      powerBoost: 0, powerBoostTime: 0 }; // for physics power shot
+  }
 
+  function startGame() {
+    audio.init(); audio.resume();
+    document.getElementById('menu').classList.add('hidden');
+    document.getElementById('gameover').classList.add('hidden');
+    document.getElementById('pause-overlay').classList.add('hidden');
+    document.getElementById('keybind-overlay').classList.add('hidden');
+    document.getElementById('settings-overlay').classList.add('hidden');
+
+    squares = [];
+    for (let i = 0; i < NUM_SQUARES; i++) {
+      squares[i] = [];
+      for (let j = 0; j < NUM_SQUARES; j++)
+        squares[i][j] = i < NUM_SQUARES / 2 ? DAY_COLOR : NIGHT_COLOR;
+    }
+
+    balls = [
+      makeBall(CANVAS_SIZE * 0.25, CANVAS_SIZE / 2, BASE_BALL_SPEED, -BASE_BALL_SPEED, 'day'),
+      makeBall(CANVAS_SIZE * 0.75, CANVAS_SIZE / 2, -BASE_BALL_SPEED, BASE_BALL_SPEED, 'night'),
+    ];
+
+    const hw = BASE_PLAYER_WIDTH / 2;
+    player1 = { cx: 30 + hw, cy: CANVAS_SIZE / 2, width: BASE_PLAYER_WIDTH, height: BASE_PLAYER_HEIGHT,
+      speed: BASE_PLAYER_SPEED, team: 'day', angle: 0 };
+    player2 = { cx: CANVAS_SIZE - 30 - hw, cy: CANVAS_SIZE / 2, width: BASE_PLAYER_WIDTH, height: BASE_PLAYER_HEIGHT,
+      speed: BASE_PLAYER_SPEED, team: 'night', angle: 0 };
+
+    powerups = []; activeEffects = { day: {}, night: {} };
+    particles = []; ballTrails = []; screenShake = { intensity: 0 };
+    teleportState = { p1: { holdFrames: 0, remaining: TELEPORT_MAX }, p2: { holdFrames: 0, remaining: TELEPORT_MAX } };
+    dayScore = TOTAL_SQUARES / 2; nightScore = TOTAL_SQUARES / 2;
+    lastSpawn = { day: 0, night: 0 };
+    aiState = { targetX: player2.cx, targetY: player2.cy, reactionCounter: 0 };
+
+    game.state = 'playing'; game.tickCount = 0; game.winner = null;
+    game.timeRemaining = settings.winCondition === 'domination' ? Infinity : settings.duration;
+    lastFrameTime = 0; accumulator = 0;
+  }
+
+  // ==================== BOOT ====================
+  loadSettings();
+  setupMenu();
+  setupSettingsUI();
+  updateControlsHelp();
+
+  if (isMobile) {
+    setupJoystick('joystick-p1', 'knob-p1', 'p1');
+    setupJoystick('joystick-p2', 'knob-p2', 'p2');
+    setupRotateBtn('rot-p1-ccw', 'p1ccw');
+    setupRotateBtn('rot-p1-cw', 'p1cw');
+    setupRotateBtn('rot-p2-ccw', 'p2ccw');
+    setupRotateBtn('rot-p2-cw', 'p2cw');
+  }
+
+  requestAnimationFrame(gameLoop);
 </script>
+</body>
 
 </html>
