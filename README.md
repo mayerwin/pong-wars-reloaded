@@ -2,6 +2,8 @@
 
 A full multiplayer evolution of the original Pong Wars — the eternal battle between Day and Night, now with rackets, powerups, AI, rotation, and more. Written in a single `index.html` file using HTML5 Canvas, CSS, and vanilla JavaScript.
 
+**[Play Now](https://mayerwin.github.io/pong-wars-reloaded/)**
+
 https://github.com/vnglst/pong-wars/assets/3457693/4eae12fa-bdc1-49ee-8b39-c94deb7cb2c8
 
 ## How to Play
@@ -26,12 +28,12 @@ Each side starts with half the grid. Balls bounce around and paint squares in th
 
 | Action         | Player 1 (Day)    | Player 2 (Night)   |
 |----------------|-------------------|---------------------|
-| Move Up        | W                 | Arrow Up            |
-| Move Down      | S                 | Arrow Down          |
-| Move Left      | A                 | Arrow Left          |
-| Move Right     | D                 | Arrow Right         |
-| Rotate Left    | Q                 | Numpad 0 / Insert   |
-| Rotate Right   | E                 | Numpad . / Delete   |
+| Move Up        | E                 | Arrow Up            |
+| Move Down      | D                 | Arrow Down          |
+| Move Left      | S                 | Arrow Left          |
+| Move Right     | F                 | Arrow Right         |
+| Rotate Left    | A                 | , (comma)           |
+| Rotate Right   | Q                 | . (period)          |
 
 All key bindings are fully customizable via Settings > Configure Keys.
 
