@@ -1,0 +1,19 @@
+{
+  "name": "Pong Wars Reloaded",
+  "short_name": "Pong Wars",
+  "description": "The unforgiving battle between day and night — with rackets, powerups, AI, and more.",
+  "start_url": ".",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#172B36",
+  "theme_color": "#172B36",
+  "categories": ["games"],
+  "icons": [
+    {
+      "src": "icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any maskable"
+    }
+  ]
+}
