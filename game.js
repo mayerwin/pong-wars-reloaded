@@ -1770,6 +1770,11 @@ function setupSettingsUI() {
     }
   });
 
+  // Mobile pause button
+  document.getElementById('pause-btn').addEventListener('click', () => {
+    if (game.state === 'playing' || game.state === 'paused') togglePause();
+  });
+
   // Pause settings button
   document.getElementById('pause-settings-btn').addEventListener('click', () => {
     document.getElementById('pause-overlay').classList.add('hidden');

@@ -15,12 +15,31 @@
   <link rel="author" href="https://erwinmayer.com" />
   <meta name="theme-color" content="#172B36" />
   <meta name="creator" content="Erwin Mayer" />
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" id="main-css" href="style.css">
+  <script>
+    // Cache-bust external CSS/JS: fetch with revalidation, hash content, reload if changed
+    (function() {
+      var files = [
+        { sel: '#main-css', attr: 'href', path: 'style.css' },
+        { sel: '#main-js',  attr: 'src',  path: 'game.js' }
+      ];
+      files.forEach(function(f) {
+        fetch(f.path, { cache: 'no-cache' }).then(function(r) { return r.text(); }).then(function(t) {
+          for (var h = 0x811c9dc5, i = 0; i < t.length; i++)
+            h ^= t.charCodeAt(i), h = Math.imul(h, 0x01000193);
+          var v = (h >>> 0).toString(36);
+          var el = document.querySelector(f.sel);
+          if (el && el[f.attr].indexOf('?v=' + v) === -1) el[f.attr] = f.path + '?v=' + v;
+        });
+      });
+    })();
+  </script>
 </head>
 
 <body>
   <div id="game-wrapper">
     <button id="fullscreen-btn" title="Fullscreen">&#x26F6;</button>
+    <button id="pause-btn" title="Pause">&#x23F8;</button>
     <!-- Mobile left panel (P1 Day) -->
     <div class="mobile-panel" id="mobile-panel-left">
       <button class="rot-btn rot-btn-top" id="rot-p1-ccw">&#x21BA;</button>
@@ -298,7 +317,7 @@
     </div>
   </div>
 
-<script src="game.js"></script>
+<script id="main-js" src="game.js"></script>
 </body>
 
 </html>
