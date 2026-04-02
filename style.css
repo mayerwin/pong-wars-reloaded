@@ -1,3 +1,25 @@
+/* ==================== THEMES ==================== */
+:root {
+  /* Default Theme: Coral */
+  --ui-accent: #F25F5C;
+  --ui-accent-rgb: 242, 95, 92;
+  --powerup-color: #F25F5C;
+}
+
+body.theme-sunset {
+  --ui-accent: #F4A261;
+  --ui-accent-rgb: 244, 162, 97;
+  --powerup-color: #F4A261;
+}
+
+body.theme-cyber {
+  --ui-accent: #00D2D3;
+  --ui-accent-rgb: 0, 210, 211;
+  --powerup-color: #00D2D3;
+}
+
+
+
 /* ==================== BASE ==================== */
 * {
   box-sizing: border-box;
@@ -96,7 +118,7 @@ body {
   height: 18px;
   border-radius: 9px;
   padding: 0 3px;
-  background: #B73E86;
+  background: var(--ui-accent);
   color: #fff;
   font-size: 10px;
   font-weight: bold;
@@ -253,7 +275,7 @@ body.is-mobile.has-fine-pointer.game-active.ai-mode #mobile-panel-left {
   height: 56px;
   border-radius: 50%;
   background: rgba(23, 43, 54, 0.25);
-  border: 2px solid rgba(183, 62, 134, 0.4);
+  border: 2px solid rgba(var(--ui-accent-rgb), 0.4);
   position: relative;
   touch-action: none;
 }
@@ -262,7 +284,7 @@ body.is-mobile.has-fine-pointer.game-active.ai-mode #mobile-panel-left {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: rgba(183, 62, 134, 0.5);
+  background: rgba(var(--ui-accent-rgb), 0.5);
   position: absolute;
   top: 50%;
   left: 50%;
@@ -281,7 +303,7 @@ body.is-mobile.has-fine-pointer.game-active.ai-mode #mobile-panel-left {
   height: 36px;
   border-radius: 50%;
   background: rgba(23, 43, 54, 0.4);
-  border: 2px solid rgba(183, 62, 134, 0.35);
+  border: 2px solid rgba(var(--ui-accent-rgb), 0.35);
   color: #D9E8E3;
   font-size: 16px;
   cursor: pointer;
@@ -294,7 +316,7 @@ body.is-mobile.has-fine-pointer.game-active.ai-mode #mobile-panel-left {
 
 .rot-btn:active,
 .rot-btn.pressed {
-  background: rgba(183, 62, 134, 0.5);
+  background: rgba(var(--ui-accent-rgb), 0.5);
 }
 
 /* Side HUD bars — hidden by default, shown in landscape in-game */
@@ -309,7 +331,7 @@ body.is-mobile.has-fine-pointer.game-active.ai-mode #mobile-panel-left {
   left: 6px;
   z-index: 20;
   background: rgba(23, 43, 54, 0.7);
-  border: 1px solid rgba(183, 62, 134, 0.4);
+  border: 1px solid rgba(var(--ui-accent-rgb), 0.4);
   color: #D9E8E3;
   font-size: 18px;
   width: 34px;
@@ -332,7 +354,7 @@ body.is-mobile:not(.has-fine-pointer).game-active #fullscreen-btn {
   left: 46px;
   z-index: 20;
   background: rgba(23, 43, 54, 0.7);
-  border: 1px solid rgba(183, 62, 134, 0.4);
+  border: 1px solid rgba(var(--ui-accent-rgb), 0.4);
   color: #D9E8E3;
   font-size: 18px;
   width: 34px;
@@ -863,7 +885,7 @@ body:not(.game-active) #menu {
   font-size: 22px;
   margin: 0 0 4px 0;
   letter-spacing: 2px;
-  color: #B73E86;
+  color: var(--ui-accent);
 }
 
 .menu-content h1 span {
@@ -932,14 +954,14 @@ body:not(.game-active) #menu {
 
 .duration-row input[type="range"] {
   flex: 1;
-  accent-color: #B73E86;
+  accent-color: var(--ui-accent);
 }
 
 .duration-value {
   font-size: 14px;
   min-width: 36px;
   text-align: right;
-  color: #B73E86;
+  color: var(--ui-accent);
 }
 
 .start-button {
@@ -949,7 +971,7 @@ body:not(.game-active) #menu {
   margin-top: 16px;
   border: none;
   border-radius: 8px;
-  background: #B73E86;
+  background: var(--ui-accent);
   color: #fff;
   font-family: monospace;
   font-size: 15px;
@@ -960,7 +982,7 @@ body:not(.game-active) #menu {
 }
 
 .start-button:hover {
-  background: #cf4e9a;
+  background: color-mix(in srgb, var(--ui-accent), white 20%);
 }
 
 .secondary-button {
@@ -990,7 +1012,7 @@ body:not(.game-active) #menu {
 }
 
 .controls-help a {
-  color: #B73E86;
+  color: var(--ui-accent);
   cursor: pointer;
   text-decoration: underline;
 }
@@ -1048,7 +1070,7 @@ body.is-small-screen .mobile-only {
 
 .keybind-section h3 {
   font-size: 11px;
-  color: #B73E86;
+  color: var(--ui-accent);
   margin: 0 0 8px 0;
 }
 
@@ -1074,18 +1096,18 @@ body.is-small-screen .mobile-only {
 }
 
 .keybind-btn.listening {
-  background: #B73E86;
+  background: var(--ui-accent);
   color: #fff;
 }
 
 .keybind-btn:hover {
-  border-color: #B73E86;
+  border-color: var(--ui-accent);
 }
 
 /* Settings overlay */
 .settings-section-title {
   font-size: 12px;
-  color: #B73E86;
+  color: var(--ui-accent);
   margin: 14px 0 8px 0;
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -1122,14 +1144,14 @@ body.is-small-screen .mobile-only {
 
 .setting-controls input[type="range"] {
   width: 80px;
-  accent-color: #B73E86;
+  accent-color: var(--ui-accent);
 }
 
 .setting-value {
   font-size: 11px;
   min-width: 30px;
   text-align: right;
-  color: #B73E86;
+  color: var(--ui-accent);
 }
 
 .reset-btn {
@@ -1150,8 +1172,8 @@ body.is-small-screen .mobile-only {
 }
 
 .reset-btn:hover {
-  border-color: #B73E86;
-  color: #B73E86;
+  border-color: var(--ui-accent);
+  color: var(--ui-accent);
 }
 
 .game-logic-setting.disabled {

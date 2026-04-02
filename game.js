@@ -1,6 +1,6 @@
 // ==================== CONSTANTS ====================
-const ACCENT = '#B73E86';
-const ACCENT_LIGHT = '#cf4e9a';
+let ACCENT = '#B73E86';
+let PU_COLOR = '#E8A820';
 
 const colorPalette = {
   ArcticPowder: "#F1F6F4",
@@ -87,6 +87,7 @@ const DEFAULT_ADV = {
   progressionBar: true,
   freeMovement: false,
   touchControls: null, // null = auto-detect, true/false = manual override
+  theme: 'coral',
 };
 
 let keyBindings = JSON.parse(JSON.stringify(DEFAULT_BINDINGS));
@@ -118,6 +119,22 @@ function loadSettings() {
       applyTouchMode();
     }
   } catch (e) { }
+  applyTheme(settings.theme || 'coral');
+}
+
+function applyTheme(themeName) {
+  document.body.className = document.body.className.replace(/\btheme-\S+/g, '').trim();
+  if (themeName !== 'coral') {
+    document.body.classList.add('theme-' + themeName);
+  }
+  
+  // Reflow to ensure CSS variables are applied
+  void document.body.offsetHeight;
+  
+  const rootStyles = getComputedStyle(document.body);
+  ACCENT = rootStyles.getPropertyValue('--ui-accent').trim() || '#F25F5C';
+  PU_COLOR = rootStyles.getPropertyValue('--powerup-color').trim() || '#F25F5C';
+  colorPalette.Forsythia = ACCENT;
 }
 
 function saveSettings() {
@@ -1306,19 +1323,19 @@ function render() {
     const py = pu.gridY * SQUARE_SIZE + SQUARE_SIZE / 2;
     const pulse = 0.7 + 0.3 * Math.sin(pu.pulsePhase);
     const onDaySide = squares[pu.gridX] && squares[pu.gridX][pu.gridY] === DAY_COLOR;
-    const puColor = onDaySide ? '#E8A820' : '#E8A820'; // yellow for both (stands out on both)
-    const glowColor = onDaySide ? 'rgba(232,168,32,' : 'rgba(232,168,32,';
 
     // Glow
     if (settings.effectsEnabled && settings.particles) {
       ctx.beginPath();
       ctx.arc(px, py, POWERUP_VISUAL_RADIUS * pulse * 1.1, 0, Math.PI * 2);
-      ctx.fillStyle = glowColor + (0.12 * pulse) + ')';
+      ctx.globalAlpha = 0.12 * pulse;
+      ctx.fillStyle = PU_COLOR;
       ctx.fill();
+      ctx.globalAlpha = 1;
     }
 
     // Shape
-    ctx.fillStyle = puColor;
+    ctx.fillStyle = PU_COLOR;
     if (onDaySide) {
       drawSun(px, py, POWERUP_VISUAL_RADIUS * 0.6, 10);
     } else {
@@ -1648,6 +1665,7 @@ function syncSettingsUI() {
   // Gameplay
   setToggle('free-move-toggle', settings.freeMovement ? 'on' : 'off');
   setToggle('touch-mode-toggle', touchMode ? 'on' : 'off');
+  setToggle('theme-toggle', settings.theme || 'coral');
   const touchRow = document.getElementById('touch-mode-row');
   if (touchRow) touchRow.classList.toggle('hidden', !hasTouch);
 }
@@ -1675,6 +1693,7 @@ function setupSettingsUI() {
     'fx-particles': v => { settings.particles = v === 'on'; },
     'fx-progbar': v => { settings.progressionBar = v === 'on'; },
     'free-move-toggle': v => { settings.freeMovement = v === 'on'; },
+    'theme-toggle': v => { settings.theme = v; applyTheme(v); },
     'touch-mode-toggle': v => {
       touchMode = v === 'on';
       settings.touchControls = touchMode;
@@ -1732,6 +1751,7 @@ function setupSettingsUI() {
     powerupFrequency: () => { settings.powerupFrequency = DEFAULT_ADV.powerupFrequency; syncSettingsUI(); saveSettings(); },
     powerupDuration: () => { settings.powerupDuration = DEFAULT_ADV.powerupDuration; syncSettingsUI(); saveSettings(); },
     freeMovement: () => { settings.freeMovement = DEFAULT_ADV.freeMovement; syncSettingsUI(); saveSettings(); },
+    theme: () => { settings.theme = DEFAULT_ADV.theme; applyTheme(settings.theme); syncSettingsUI(); saveSettings(); },
     touchControls: () => {
       settings.touchControls = null;
       touchMode = hasTouch && !hasFinePointer;
