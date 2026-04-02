@@ -1,6 +1,6 @@
 # Pong Wars Reloaded
 
-A full multiplayer evolution of the original Pong Wars — the eternal battle between Day and Night, now with rackets, powerups, AI, rotation, and more. Written in a single `index.html` file using HTML5 Canvas, CSS, and vanilla JavaScript.
+A full multiplayer evolution of the original Pong Wars — the eternal battle between Day and Night, now with rackets, powerups, AI, rotation, and more. Written using HTML5 Canvas, CSS, and vanilla JavaScript.
 
 **[Play Now](https://mayerwin.github.io/pong-wars-reloaded/)**
 

@@ -746,6 +746,8 @@ function updateBalls() {
         if (relV > 0) { // approaching
           a.dx -= relV * nx; a.dy -= relV * ny;
           b.dx += relV * nx; b.dy += relV * ny;
+          a.skipSquareCheck = 4;
+          b.skipSquareCheck = 4;
         }
       }
     }
@@ -1457,7 +1459,6 @@ function setupJoystick(areaId, knobId, pKey) {
   }
 
   function onStart(e) {
-    e.preventDefault();
     audio.init(); audio.resume();
     const t = e.changedTouches[0];
     if (!t) return;
@@ -1471,7 +1472,6 @@ function setupJoystick(areaId, knobId, pKey) {
     processTouch(t);
   }
   function onMove(e) {
-    e.preventDefault();
     for (let i = 0; i < e.changedTouches.length; i++) {
       if (e.changedTouches[i].identifier === activeId) {
         processTouch(e.changedTouches[i]);
@@ -1494,7 +1494,6 @@ function setupJoystick(areaId, knobId, pKey) {
     joystickInput[pKey] = { dx: gx / maxD, dy: gy / maxD };
   }
   function onEnd(e) {
-    e.preventDefault();
     for (let i = 0; i < e.changedTouches.length; i++) {
       if (e.changedTouches[i].identifier === activeId) {
         activeId = null;
@@ -1504,22 +1503,22 @@ function setupJoystick(areaId, knobId, pKey) {
       }
     }
   }
-  area.addEventListener('touchstart', onStart, { passive: false });
-  area.addEventListener('touchmove', onMove, { passive: false });
-  area.addEventListener('touchend', onEnd, { passive: false });
-  area.addEventListener('touchcancel', onEnd, { passive: false });
+  area.addEventListener('touchstart', onStart, { passive: true });
+  area.addEventListener('touchmove', onMove, { passive: true });
+  area.addEventListener('touchend', onEnd, { passive: true });
+  area.addEventListener('touchcancel', onEnd, { passive: true });
 }
 
 function setupRotateBtn(btnId, key) {
   const btn = document.getElementById(btnId);
   if (!btn) return;
   btn.addEventListener('touchstart', e => {
-    e.preventDefault(); e.stopPropagation();
+    e.stopPropagation();
     mobileRotate[key] = true; btn.classList.add('pressed');
-  }, { passive: false });
-  const up = e => { e.preventDefault(); mobileRotate[key] = false; btn.classList.remove('pressed'); };
-  btn.addEventListener('touchend', up, { passive: false });
-  btn.addEventListener('touchcancel', up, { passive: false });
+  }, { passive: true });
+  const up = e => { mobileRotate[key] = false; btn.classList.remove('pressed'); };
+  btn.addEventListener('touchend', up, { passive: true });
+  btn.addEventListener('touchcancel', up, { passive: true });
 }
 
 // ==================== KEYBINDING UI ====================
@@ -1970,14 +1969,13 @@ if (hasTouch) {
   });
   document.addEventListener('fullscreenchange', updateFsIcon);
 
-  // Gesture blocking: CSS touch-action:none on html/body handles most browsers.
-  // Fallback: block only on the canvas and game-wrapper, not globally, to avoid
-  // blocking the compositor thread for all touch events (which causes input lag).
+  // Gesture blocking: CSS touch-action:none on html/body handles most browsers natively.
+  // We attach a passive listener here just in case, but rely heavily on CSS.
   const gameWrapper = document.getElementById('game-wrapper');
   for (const el of [canvas, gameWrapper]) {
     el.addEventListener('touchmove', e => {
-      if (document.body.classList.contains('game-active')) e.preventDefault();
-    }, { passive: false });
+      // Intentionally passive to avoid input lag.
+    }, { passive: true });
   }
 }
 
