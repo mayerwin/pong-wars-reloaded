@@ -1446,7 +1446,24 @@ function drawRotatedPlayer(player, fillColor) {
   ctx.restore();
 }
 
-// ==================== GAME LOOP ====================
+// Sync side HUD bars to align with the canvas (desktop touch landscape)
+function syncSideHudAlignment() {
+  if (!touchMode || !hasFinePointer) return;
+  const c = canvas;
+  const leftBar = document.getElementById('side-hud-bar-left');
+  const rightBar = document.getElementById('side-hud-bar-right');
+  if (!c || !leftBar || !rightBar) return;
+  const canvasRect = c.getBoundingClientRect();
+  const wrapperRect = c.closest('#game-wrapper').getBoundingClientRect();
+  const offset = canvasRect.top - wrapperRect.top;
+  const h = canvasRect.height;
+  leftBar.style.marginTop = offset + 'px';
+  rightBar.style.marginTop = offset + 'px';
+  leftBar.style.height = h + 'px';
+  rightBar.style.height = h + 'px';
+}
+
+// ==================== GAME LOOP ======================================
 let lastFrameTime = 0, accumulator = 0;
 
 function gameLoop(timestamp) {
@@ -1471,6 +1488,7 @@ function gameLoop(timestamp) {
   }
   updateParticles();
   render();
+  syncSideHudAlignment();
 }
 
 // ==================== INPUT SETUP ====================
@@ -2006,6 +2024,8 @@ function startGame() {
   game.state = 'playing'; game.tickCount = 0; game.winner = null;
   game.timeRemaining = settings.winCondition === 'domination' ? Infinity : settings.duration;
   lastFrameTime = 0; accumulator = 0;
+  // Sync side HUDs after layout settles
+  requestAnimationFrame(syncSideHudAlignment);
 }
 
 // ==================== BOOT ====================
