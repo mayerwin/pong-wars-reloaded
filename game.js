@@ -87,7 +87,8 @@ const DEFAULT_ADV = {
   progressionBar: true,
   freeMovement: false,
   touchControls: null, // null = auto-detect, true/false = manual override
-  theme: 'coral',
+  theme: 'cyber',
+  ai1Difficulty: 'medium', // Day AI
 };
 
 let keyBindings = JSON.parse(JSON.stringify(DEFAULT_BINDINGS));
@@ -119,21 +120,21 @@ function loadSettings() {
       applyTouchMode();
     }
   } catch (e) { }
-  applyTheme(settings.theme || 'coral');
+  applyTheme(settings.theme || 'cyber');
 }
 
 function applyTheme(themeName) {
   document.body.className = document.body.className.replace(/\btheme-\S+/g, '').trim();
-  if (themeName !== 'coral') {
+  if (themeName !== 'cyber') {
     document.body.classList.add('theme-' + themeName);
   }
-  
+
   // Reflow to ensure CSS variables are applied
   void document.body.offsetHeight;
-  
+
   const rootStyles = getComputedStyle(document.body);
-  ACCENT = rootStyles.getPropertyValue('--ui-accent').trim() || '#F25F5C';
-  PU_COLOR = rootStyles.getPropertyValue('--powerup-color').trim() || '#F25F5C';
+  ACCENT = rootStyles.getPropertyValue('--ui-accent').trim() || '#00D2D3';
+  PU_COLOR = rootStyles.getPropertyValue('--powerup-color').trim() || '#00D2D3';
   colorPalette.Forsythia = ACCENT;
 }
 
@@ -223,10 +224,10 @@ const audio = {
 
 // ==================== GAME STATE ====================
 const AI_CONFIG = {
-  easy:    { speedMult: 0.38, reactionFrames: 18, jitter: 35, seeksPowerups: false, predicts: false, advanceMult: 0.2 },
-  medium:  { speedMult: 0.62, reactionFrames: 10, jitter: 18, seeksPowerups: false, predicts: false, advanceMult: 0.4 },
-  hard:    { speedMult: 0.88, reactionFrames: 4,  jitter: 8,  seeksPowerups: true,  predicts: true,  advanceMult: 0.6 },
-  hardest: { speedMult: 1.0,  reactionFrames: 0,  jitter: 0,  seeksPowerups: true,  predicts: true,  advanceMult: 0.8 },
+  easy: { speedMult: 0.38, reactionFrames: 18, jitter: 35, seeksPowerups: false, predicts: false, advanceMult: 0.2, puRadius: 0.25 },
+  medium: { speedMult: 0.62, reactionFrames: 10, jitter: 18, seeksPowerups: true, predicts: false, advanceMult: 0.4, puRadius: 0.35, puUrgencyThresh: 1.2 },
+  hard: { speedMult: 0.88, reactionFrames: 4, jitter: 8, seeksPowerups: true, predicts: true, advanceMult: 0.6, puRadius: 0.6, puUrgencyThresh: 1.45 },
+  hardest: { speedMult: 1.0, reactionFrames: 0, jitter: 0, seeksPowerups: true, predicts: true, advanceMult: 0.8, puRadius: Infinity, puUrgencyThresh: 1.75 },
 };
 
 let game = { state: 'menu', timeRemaining: 0, tickCount: 0, winner: null };
@@ -239,7 +240,7 @@ let particles = [], ballTrails = [];
 let screenShake = { intensity: 0 };
 let dayScore = 0, nightScore = 0;
 let lastSpawn = { day: 0, night: 0 };
-let aiState = { targetX: 0, targetY: 0, reactionCounter: 0 };
+let aiState = { p1: { targetX: 0, targetY: 0, reactionCounter: 0 }, p2: { targetX: 0, targetY: 0, reactionCounter: 0 } };
 const TELEPORT_MAX = 3;
 const TELEPORT_HOLD_FRAMES = 180; // 3 seconds at 60fps
 let teleportState = {
@@ -459,13 +460,17 @@ function updatePlayers() {
   player2.prevCx = player2.cx; player2.prevCy = player2.cy;
 
   if (isPlayerStuck(player1)) rescuePlayer(player1);
-  updatePlayerInput(player1, 'p1', keyBindings.p1);
+  if (settings.mode === 'aivsai') {
+    updateAI(player1, 'ai1Difficulty');
+  } else {
+    updatePlayerInput(player1, 'p1', keyBindings.p1);
+  }
   applyGridSnap(player1);
   pushBallsFromRacket(player1);
 
   if (isPlayerStuck(player2)) rescuePlayer(player2);
-  if (settings.mode === 'ai') {
-    updateAI();
+  if (settings.mode === 'ai' || settings.mode === 'aivsai') {
+    updateAI(player2, 'aiDifficulty');
   } else {
     updatePlayerInput(player2, 'p2', keyBindings.p2);
   }
@@ -569,10 +574,10 @@ function pushBallOutOfRacket(ball, player) {
 
   // Center is INSIDE the racket — find nearest edge and push out
   const dists = [
-    { d: hw - lx,  nlx: 1,  nly: 0  },
-    { d: hw + lx,  nlx: -1, nly: 0  },
-    { d: hh - ly,  nlx: 0,  nly: 1  },
-    { d: hh + ly,  nlx: 0,  nly: -1 },
+    { d: hw - lx, nlx: 1, nly: 0 },
+    { d: hw + lx, nlx: -1, nly: 0 },
+    { d: hh - ly, nlx: 0, nly: 1 },
+    { d: hh + ly, nlx: 0, nly: -1 },
   ];
   dists.sort((a, b) => a.d - b.d);
   const best = dists[0];
@@ -637,63 +642,75 @@ function teleportBallToRacket(player) {
 }
 
 // ==================== AI ====================
-function updateAI() {
-  const cfg = AI_CONFIG[settings.aiDifficulty];
+function updateAI(player, diffKey) {
+  const cfg = AI_CONFIG[settings[diffKey]] || AI_CONFIG.medium;
 
-  if (player2.angle > 0.01) rotatePlayer(player2, -ROT_SNAP);
-  else if (player2.angle < -0.01) rotatePlayer(player2, ROT_SNAP);
-  else if (isValidRotatedPos(player2, player2.cx, player2.cy, 0)) player2.angle = 0;
+  if (player.angle > 0.01) rotatePlayer(player, -ROT_SNAP);
+  else if (player.angle < -0.01) rotatePlayer(player, ROT_SNAP);
+  else if (isValidRotatedPos(player, player.cx, player.cy, 0)) player.angle = 0;
 
-  if (aiState.reactionCounter > 0) {
-    aiState.reactionCounter--;
-    const speed = player2.speed * cfg.speedMult;
-    const dy = Math.max(-speed, Math.min(speed, aiState.targetY - player2.cy));
-    const dx = Math.max(-speed, Math.min(speed, aiState.targetX - player2.cx));
-    movePlayer(player2, player2.cx + dx, player2.cy + dy);
+  const playerKey = player.team === 'day' ? 'p1' : 'p2';
+
+  if (aiState[playerKey].reactionCounter > 0) {
+    aiState[playerKey].reactionCounter--;
+    const speed = player.speed * cfg.speedMult;
+    const dy = Math.max(-speed, Math.min(speed, aiState[playerKey].targetY - player.cy));
+    const dx = Math.max(-speed, Math.min(speed, aiState[playerKey].targetX - player.cx));
+    movePlayer(player, player.cx + dx, player.cy + dy);
     return;
   }
-  aiState.reactionCounter = cfg.reactionFrames;
+  aiState[playerKey].reactionCounter = cfg.reactionFrames;
 
   let bestBall = null, bestUrgency = -Infinity;
   for (const ball of balls) {
-    const urgency = ball.dx > 0 ? 1 + ball.x / CANVAS_SIZE : ball.x / CANVAS_SIZE * 0.3;
+    const urgency = player.team === 'day'
+      ? (ball.dx < 0 ? 1 + (CANVAS_SIZE - ball.x) / CANVAS_SIZE : (CANVAS_SIZE - ball.x) / CANVAS_SIZE * 0.3)
+      : (ball.dx > 0 ? 1 + ball.x / CANVAS_SIZE : ball.x / CANVAS_SIZE * 0.3);
     if (urgency > bestUrgency) { bestUrgency = urgency; bestBall = ball; }
   }
 
-  let targetX = player2.cx, targetY = player2.cy;
+  let targetX = player.cx, targetY = player.cy;
 
   if (bestBall && bestUrgency > 0.3) {
-    targetY = cfg.predicts ? predictBallY(bestBall, player2.cx) : bestBall.y;
-    targetX = Math.max(CANVAS_SIZE * 0.5, Math.min(CANVAS_SIZE - 40, bestBall.x + 80));
+    targetY = cfg.predicts ? predictBallY(bestBall, player.cx) : bestBall.y;
+    targetX = player.team === 'day'
+      ? Math.max(40, Math.min(CANVAS_SIZE * 0.5 - 20, bestBall.x - 80))
+      : Math.max(CANVAS_SIZE * 0.5 + 20, Math.min(CANVAS_SIZE - 40, bestBall.x + 80));
     targetY += (Math.random() - 0.5) * cfg.jitter;
   } else {
-    const advanceTarget = CANVAS_SIZE * (0.55 - cfg.advanceMult * 0.15);
-    targetX = Math.max(advanceTarget, player2.cx - 10);
+    const advanceTarget = player.team === 'day'
+      ? CANVAS_SIZE * (0.45 + cfg.advanceMult * 0.15)
+      : CANVAS_SIZE * (0.55 - cfg.advanceMult * 0.15);
+    targetX = Math.max(advanceTarget, player.team === 'day' ? player.cx + 10 : player.cx - 10);
+    targetX = player.team === 'day' ? Math.min(targetX, CANVAS_SIZE / 2 - 20) : Math.max(targetX, CANVAS_SIZE / 2 + 20);
     targetY = CANVAS_SIZE / 2 + (Math.random() - 0.5) * 100;
   }
 
   if (cfg.seeksPowerups) {
     let nearestPU = null, nearestDist = Infinity;
+    const enemyColor = player.team === 'day' ? NIGHT_COLOR : DAY_COLOR;
+
     for (const pu of powerups) {
-      if (squares[pu.gridX][pu.gridY] !== NIGHT_COLOR) continue;
+      if (squares[pu.gridX][pu.gridY] !== enemyColor) continue;
       const px = pu.gridX * SQUARE_SIZE + SQUARE_SIZE / 2;
       const py = pu.gridY * SQUARE_SIZE + SQUARE_SIZE / 2;
-      const dist = Math.hypot(px - player2.cx, py - player2.cy);
-      if (dist < nearestDist && dist < CANVAS_SIZE * 0.35) {
+      const dist = Math.hypot(px - player.cx, py - player.cy);
+      if (dist < nearestDist && dist < CANVAS_SIZE * (cfg.puRadius || 0.35)) {
         nearestDist = dist; nearestPU = pu;
       }
     }
-    if (nearestPU && bestUrgency < 0.6) {
+    const urgencyThresh = cfg.puUrgencyThresh || 0.6;
+    if (nearestPU && bestUrgency < urgencyThresh) {
       targetX = nearestPU.gridX * SQUARE_SIZE + SQUARE_SIZE / 2;
       targetY = nearestPU.gridY * SQUARE_SIZE + SQUARE_SIZE / 2;
     }
   }
 
-  aiState.targetX = targetX;
-  aiState.targetY = targetY;
-  const speed = player2.speed * cfg.speedMult;
-  movePlayer(player2, player2.cx + Math.max(-speed, Math.min(speed, targetX - player2.cx)),
-    player2.cy + Math.max(-speed, Math.min(speed, targetY - player2.cy)));
+  aiState[playerKey].targetX = targetX;
+  aiState[playerKey].targetY = targetY;
+  const speed = player.speed * cfg.speedMult;
+  movePlayer(player, player.cx + Math.max(-speed, Math.min(speed, targetX - player.cx)),
+    player.cy + Math.max(-speed, Math.min(speed, targetY - player.cy)));
 }
 
 function predictBallY(ball, targetX) {
@@ -1174,14 +1191,18 @@ function triggerWin(winner, isDomination) {
 
 // ==================== EFFECTS ====================
 function makeParticle(x, y, color) {
-  return { x, y, vx: (Math.random() - 0.5) * 8, vy: (Math.random() - 0.5) * 8,
-    color, life: 1, decay: 0.03 + Math.random() * 0.03, size: 3 + Math.random() * 4 };
+  return {
+    x, y, vx: (Math.random() - 0.5) * 8, vy: (Math.random() - 0.5) * 8,
+    color, life: 1, decay: 0.03 + Math.random() * 0.03, size: 3 + Math.random() * 4
+  };
 }
 function makeConfetti(x, y, color) {
-  return { x, y, vx: (Math.random() - 0.5) * 12, vy: -Math.random() * 10 - 2,
+  return {
+    x, y, vx: (Math.random() - 0.5) * 12, vy: -Math.random() * 10 - 2,
     gravity: 0.15, color, life: 1, decay: 0.004 + Math.random() * 0.006,
     size: 4 + Math.random() * 8, rotation: Math.random() * Math.PI * 2,
-    rotSpeed: (Math.random() - 0.5) * 0.15 };
+    rotSpeed: (Math.random() - 0.5) * 0.15
+  };
 }
 
 function updateParticles() {
@@ -1204,6 +1225,23 @@ function updateParticles() {
 }
 
 // ==================== RENDERING ====================
+function hexToRgb(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function rgbToHex(r, g, b) {
+  return '#' + ((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1);
+}
+function hexLerp(a, b, t) {
+  const [ar, ag, ab] = hexToRgb(a);
+  const [br, bg, bb] = hexToRgb(b);
+  return rgbToHex(
+    Math.round(ar + (br - ar) * t),
+    Math.round(ag + (bg - ag) * t),
+    Math.round(ab + (bb - ab) * t)
+  );
+}
+
 function drawStar(cx, cy, outerR, innerR, points) {
   ctx.beginPath();
   for (let i = 0; i < points * 2; i++) {
@@ -1347,9 +1385,21 @@ function render() {
     drawPowerupIcon(px, py, pu.type, POWERUP_VISUAL_RADIUS);
   }
 
-  // Players
-  drawRotatedPlayer(player1, DAY_BALL_COLOR);
-  drawRotatedPlayer(player2, NIGHT_BALL_COLOR);
+  // Players — blink racket during teleport charge (after 500ms)
+  const TELEPORT_BLINK_START = 30; // 500ms at 60fps
+  const TELEPORT_BLINK_SPEED = 10; // fast sine cycles
+  let p1Color = DAY_BALL_COLOR;
+  if (teleportState.p1.holdFrames > TELEPORT_BLINK_START) {
+    const t = (Math.sin((teleportState.p1.holdFrames - TELEPORT_BLINK_START) * TELEPORT_BLINK_SPEED * Math.PI / TELEPORT_HOLD_FRAMES * 2) + 1) / 2;
+    p1Color = hexLerp(DAY_BALL_COLOR, ACCENT, t);
+  }
+  let p2Color = NIGHT_BALL_COLOR;
+  if (teleportState.p2.holdFrames > TELEPORT_BLINK_START) {
+    const t = (Math.sin((teleportState.p2.holdFrames - TELEPORT_BLINK_START) * TELEPORT_BLINK_SPEED * Math.PI / TELEPORT_HOLD_FRAMES * 2) + 1) / 2;
+    p2Color = hexLerp(NIGHT_BALL_COLOR, ACCENT, t);
+  }
+  drawRotatedPlayer(player1, p1Color);
+  drawRotatedPlayer(player2, p2Color);
 
   // Balls
   for (const ball of balls) {
@@ -1542,8 +1592,10 @@ function setupRotateBtn(btnId, key) {
 let listeningBtn = null;
 
 function keyDisplayName(key) {
-  const m = { ArrowUp: '\u2191', ArrowDown: '\u2193', ArrowLeft: '\u2190', ArrowRight: '\u2192',
-    ' ': 'Space', Escape: 'Esc', ',': ',', '.': '.' };
+  const m = {
+    ArrowUp: '\u2191', ArrowDown: '\u2193', ArrowLeft: '\u2190', ArrowRight: '\u2192',
+    ' ': 'Space', Escape: 'Esc', ',': ',', '.': '.'
+  };
   return m[key] || (key.length === 1 ? key.toUpperCase() : key);
 }
 
@@ -1665,7 +1717,7 @@ function syncSettingsUI() {
   // Gameplay
   setToggle('free-move-toggle', settings.freeMovement ? 'on' : 'off');
   setToggle('touch-mode-toggle', touchMode ? 'on' : 'off');
-  setToggle('theme-toggle', settings.theme || 'coral');
+  setToggle('theme-toggle', settings.theme || 'cyber');
   const touchRow = document.getElementById('touch-mode-row');
   if (touchRow) touchRow.classList.toggle('hidden', !hasTouch);
 }
@@ -1856,10 +1908,17 @@ function handleOptionChange(groupId, value) {
   switch (groupId) {
     case 'mode-select':
       settings.mode = value;
-      document.getElementById('ai-options').classList.toggle('hidden', value !== 'ai');
-      document.body.classList.toggle('ai-mode', value === 'ai');
+      // In "vs AI", hide Day AI difficulty and only present Night AI difficulty but labeled as "AI Difficulty"
+      // In "AI vs AI", present both.
+      document.getElementById('ai-options').classList.toggle('hidden', value !== 'aivsai');
+      document.getElementById('ai2-options').classList.toggle('hidden', value !== 'ai' && value !== 'aivsai');
+      const lbl2 = document.getElementById('ai2-difficulty-label');
+      if (lbl2) lbl2.textContent = value === 'aivsai' ? 'Night AI Difficulty' : 'AI Difficulty';
+
+      document.body.classList.toggle('ai-mode', value === 'ai' || value === 'aivsai');
       break;
-    case 'difficulty-select': settings.aiDifficulty = value; break;
+    case 'difficulty-select': settings.ai1Difficulty = value; break;
+    case 'difficulty2-select': settings.aiDifficulty = value; break;
     case 'win-select':
       settings.winCondition = value;
       document.getElementById('duration-options').classList.toggle('hidden', value === 'domination');
@@ -1870,7 +1929,7 @@ function handleOptionChange(groupId, value) {
 function showMenu() {
   game.state = 'menu';
   document.body.classList.remove('game-active');
-  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => { });
   document.getElementById('menu').classList.remove('hidden');
   document.getElementById('gameover').classList.add('hidden');
   document.getElementById('pause-overlay').classList.add('hidden');
@@ -1895,12 +1954,14 @@ document.addEventListener('click', e => {
 
 // ==================== GAME INIT ====================
 function makeBall(x, y, dx, dy, team) {
-  return { x, y, dx, dy, team,
+  return {
+    x, y, dx, dy, team,
     paintColor: team === 'day' ? DAY_COLOR : NIGHT_COLOR,
     ballColor: team === 'day' ? DAY_BALL_COLOR : NIGHT_BALL_COLOR,
     radius: BASE_BALL_RADIUS, isExtra: false, expiresAt: Infinity,
     skipSquareCheck: 0,
-    powerBoost: 0, powerBoostTime: 0 }; // for physics power shot
+    powerBoost: 0, powerBoostTime: 0
+  }; // for physics power shot
 }
 
 function startGame() {
@@ -1926,17 +1987,21 @@ function startGame() {
   ];
 
   const hw = BASE_PLAYER_WIDTH / 2;
-  player1 = { cx: 30 + hw, cy: CANVAS_SIZE / 2, width: BASE_PLAYER_WIDTH, height: BASE_PLAYER_HEIGHT,
-    speed: BASE_PLAYER_SPEED, team: 'day', angle: 0 };
-  player2 = { cx: CANVAS_SIZE - 30 - hw, cy: CANVAS_SIZE / 2, width: BASE_PLAYER_WIDTH, height: BASE_PLAYER_HEIGHT,
-    speed: BASE_PLAYER_SPEED, team: 'night', angle: 0 };
+  player1 = {
+    cx: 30 + hw, cy: CANVAS_SIZE / 2, width: BASE_PLAYER_WIDTH, height: BASE_PLAYER_HEIGHT,
+    speed: BASE_PLAYER_SPEED, team: 'day', angle: 0
+  };
+  player2 = {
+    cx: CANVAS_SIZE - 30 - hw, cy: CANVAS_SIZE / 2, width: BASE_PLAYER_WIDTH, height: BASE_PLAYER_HEIGHT,
+    speed: BASE_PLAYER_SPEED, team: 'night', angle: 0
+  };
 
   powerups = []; activeEffects = { day: {}, night: {} };
   particles = []; ballTrails = []; screenShake = { intensity: 0 };
   teleportState = { p1: { holdFrames: 0, remaining: TELEPORT_MAX }, p2: { holdFrames: 0, remaining: TELEPORT_MAX } };
   dayScore = TOTAL_SQUARES / 2; nightScore = TOTAL_SQUARES / 2;
   lastSpawn = { day: 0, night: 0 };
-  aiState = { targetX: player2.cx, targetY: player2.cy, reactionCounter: 0 };
+  aiState = { p1: { targetX: player1.cx, targetY: player1.cy, reactionCounter: 0 }, p2: { targetX: player2.cx, targetY: player2.cy, reactionCounter: 0 } };
 
   game.state = 'playing'; game.tickCount = 0; game.winner = null;
   game.timeRemaining = settings.winCondition === 'domination' ? Infinity : settings.duration;
@@ -1978,13 +2043,13 @@ if (hasTouch) {
         // In 2P mode, lock to landscape; in AI mode allow any orientation
         if (screen.orientation && screen.orientation.lock) {
           if (settings.mode !== 'ai') {
-            screen.orientation.lock('landscape').catch(() => {});
+            screen.orientation.lock('landscape').catch(() => { });
           }
         }
-      } catch (e) {}
+      } catch (e) { }
     } else {
       if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
-      document.exitFullscreen().catch(() => {});
+      document.exitFullscreen().catch(() => { });
     }
   });
   document.addEventListener('fullscreenchange', updateFsIcon);

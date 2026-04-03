@@ -1,9 +1,9 @@
 /* ==================== THEMES ==================== */
 :root {
-  /* Default Theme: Coral */
-  --ui-accent: #F25F5C;
-  --ui-accent-rgb: 242, 95, 92;
-  --powerup-color: #F25F5C;
+  /* Default Theme: Cyber */
+  --ui-accent: #00D2D3;
+  --ui-accent-rgb: 0, 210, 211;
+  --powerup-color: #00D2D3;
 }
 
 body.theme-sunset {
@@ -12,10 +12,10 @@ body.theme-sunset {
   --powerup-color: #F4A261;
 }
 
-body.theme-cyber {
-  --ui-accent: #00D2D3;
-  --ui-accent-rgb: 0, 210, 211;
-  --powerup-color: #00D2D3;
+body.theme-coral {
+  --ui-accent: #F25F5C;
+  --ui-accent-rgb: 242, 95, 92;
+  --powerup-color: #F25F5C;
 }
 
 

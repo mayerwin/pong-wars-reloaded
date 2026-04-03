@@ -2,7 +2,8 @@
 <html>
 
 <head>
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>Pong Wars Reloaded | Erwin Mayer</title>
   <meta name="description"
     content="The unforgiving battle between day and night, good and bad. Written in JavaScript with some HTML & CSS in one index.html. Feel free to reuse the code and create your own version." />
@@ -18,13 +19,13 @@
   <link rel="stylesheet" id="main-css" href="style.css">
   <script>
     // Cache-bust external CSS/JS: fetch with revalidation, hash content, reload if changed
-    (function() {
+    (function () {
       var files = [
         { sel: '#main-css', attr: 'href', path: 'style.css' },
-        { sel: '#main-js',  attr: 'src',  path: 'game.js' }
+        { sel: '#main-js', attr: 'src', path: 'game.js' }
       ];
-      files.forEach(function(f) {
-        fetch(f.path, { cache: 'no-cache' }).then(function(r) { return r.text(); }).then(function(t) {
+      files.forEach(function (f) {
+        fetch(f.path, { cache: 'no-cache' }).then(function (r) { return r.text(); }).then(function (t) {
           for (var h = 0x811c9dc5, i = 0; i < t.length; i++)
             h ^= t.charCodeAt(i), h = Math.imul(h, 0x01000193);
           var v = (h >>> 0).toString(36);
@@ -38,13 +39,29 @@
 
 <body>
   <div id="game-wrapper">
-    <button id="fullscreen-btn" title="Fullscreen"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg></button>
-    <button id="pause-btn" title="Pause"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg></button>
+    <button id="fullscreen-btn" title="Fullscreen"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em"
+        stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+      </svg></button>
+    <button id="pause-btn" title="Pause"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="currentColor">
+        <rect x="6" y="4" width="4" height="16"></rect>
+        <rect x="14" y="4" width="4" height="16"></rect>
+      </svg></button>
     <!-- Mobile left panel (P1 Day) -->
     <div class="mobile-panel" id="mobile-panel-left">
-      <button class="rot-btn rot-btn-top" id="rot-p1-ccw"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg></button>
-      <div class="joystick-area" id="joystick-p1"><div class="joystick-knob" id="knob-p1"></div></div>
-      <button class="rot-btn rot-btn-bottom" id="rot-p1-cw"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg></button>
+      <button class="rot-btn rot-btn-top" id="rot-p1-ccw"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em"
+          stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="1 4 1 10 7 10"></polyline>
+          <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+        </svg></button>
+      <div class="joystick-area" id="joystick-p1">
+        <div class="joystick-knob" id="knob-p1"></div>
+      </div>
+      <button class="rot-btn rot-btn-bottom" id="rot-p1-cw"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em"
+          stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="23 4 23 10 17 10"></polyline>
+          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+        </svg></button>
     </div>
 
     <!-- Side HUD + progress bar (Day) — between left panel and game area -->
@@ -52,7 +69,10 @@
       <span class="side-score" id="side-day-score">512</span>
       <span class="side-timer" id="side-timer-left"></span>
       <span class="side-powerups" id="side-day-powerups"></span>
-      <div class="side-prog-track"><div class="vprog-day" style="height:50%"></div><div class="vprog-night" style="height:50%"></div></div>
+      <div class="side-prog-track">
+        <div class="vprog-day" style="height:50%"></div>
+        <div class="vprog-night" style="height:50%"></div>
+      </div>
     </div>
     <div id="container">
       <canvas id="pongCanvas" width="800" height="800"></canvas>
@@ -69,15 +89,28 @@
           <span class="team-name">night</span>
         </div>
       </div>
-      <div id="progression-bar"><div id="prog-day" style="width:50%"></div><div id="prog-night" style="width:50%"></div></div>
+      <div id="progression-bar">
+        <div id="prog-day" style="width:50%"></div>
+        <div id="prog-night" style="width:50%"></div>
+      </div>
 
       <!-- Mobile bottom panel (AI mode portrait) -->
       <div id="mobile-panel-bottom">
         <div class="rotate-btns">
-          <button class="rot-btn" id="rot-p1b-ccw"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg></button>
-          <button class="rot-btn" id="rot-p1b-cw"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg></button>
+          <button class="rot-btn" id="rot-p1b-ccw"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em"
+              stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="1 4 1 10 7 10"></polyline>
+              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+            </svg></button>
+          <button class="rot-btn" id="rot-p1b-cw"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em"
+              stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+            </svg></button>
         </div>
-        <div class="joystick-area" id="joystick-p1b"><div class="joystick-knob" id="knob-p1b"></div></div>
+        <div class="joystick-area" id="joystick-p1b">
+          <div class="joystick-knob" id="knob-p1b"></div>
+        </div>
       </div>
 
       <button id="gear-btn" title="Settings">&#x2699;</button>
@@ -92,11 +125,21 @@
             <div class="toggle-group" id="mode-select">
               <button data-value="2p" class="active">2 Players</button>
               <button data-value="ai">vs AI</button>
+              <button data-value="aivsai">AI vs AI</button>
             </div>
           </div>
           <div class="option-group hidden" id="ai-options">
-            <label>AI Difficulty</label>
+            <label id="ai-difficulty-label">Day AI Difficulty</label>
             <div class="toggle-group" id="difficulty-select">
+              <button data-value="easy">Easy</button>
+              <button data-value="medium" class="active">Medium</button>
+              <button data-value="hard">Hard</button>
+              <button data-value="hardest">Hardest</button>
+            </div>
+          </div>
+          <div class="option-group hidden" id="ai2-options">
+            <label id="ai2-difficulty-label">Night AI Difficulty</label>
+            <div class="toggle-group" id="difficulty2-select">
               <button data-value="easy">Easy</button>
               <button data-value="medium" class="active">Medium</button>
               <button data-value="hard">Hard</button>
@@ -121,7 +164,8 @@
           <button class="start-button" id="start-btn">START GAME</button>
           <div class="controls-help desktop-only" id="desktop-controls-help">
             P1: E S D F + A/Q rotate &bull; P2: Arrows + ,/. rotate<br>
-            <a id="config-keys-link">Configure Keys</a> &bull; <a id="menu-settings-link">&#x2699; Settings</a> &bull; ESC: Pause
+            <a id="config-keys-link">Configure Keys</a> &bull; <a id="menu-settings-link">&#x2699; Settings</a> &bull;
+            ESC: Pause
           </div>
           <div class="controls-help mobile-only">
             Use side joysticks to move &bull; Buttons to rotate<br>
@@ -160,9 +204,9 @@
             <label>Color Theme</label>
             <div class="setting-controls">
               <div class="toggle-group" id="theme-toggle" style="flex-wrap: wrap;">
-                <button data-value="coral" class="active">Coral</button>
+                <button data-value="coral">Coral</button>
                 <button data-value="sunset">Sunset</button>
-                <button data-value="cyber">Cyber</button>
+                <button data-value="cyber" class="active">Cyber</button>
               </div>
               <button class="reset-btn" data-key="theme" title="Reset to default">&#x21BA;</button>
             </div>
@@ -309,7 +353,12 @@
       </div>
 
       <p id="made">
-        <svg class="gh-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> Erwin Mayer's <a href="https://github.com/mayerwin/pong-wars-reloaded" target="_blank" rel="noopener">fork</a> of the excellent <a href="https://github.com/vnglst/pong-wars" target="_blank" rel="noopener">Pong Wars</a>
+        <svg class="gh-icon" viewBox="0 0 16 16" fill="currentColor">
+          <path
+            d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+        </svg> Erwin Mayer's <a href="https://github.com/mayerwin/pong-wars-reloaded" target="_blank"
+          rel="noopener">fork</a> of the excellent <a href="https://github.com/vnglst/pong-wars" target="_blank"
+          rel="noopener">Pong Wars</a>
       </p>
     </div>
 
@@ -318,17 +367,30 @@
       <span class="side-score" id="side-night-score">512</span>
       <span class="side-timer" id="side-timer-right"></span>
       <span class="side-powerups" id="side-night-powerups"></span>
-      <div class="side-prog-track"><div class="vprog-day" style="height:50%"></div><div class="vprog-night" style="height:50%"></div></div>
+      <div class="side-prog-track">
+        <div class="vprog-day" style="height:50%"></div>
+        <div class="vprog-night" style="height:50%"></div>
+      </div>
     </div>
     <!-- Mobile right panel (P2 Night) -->
     <div class="mobile-panel" id="mobile-panel-right">
-      <button class="rot-btn rot-btn-top" id="rot-p2-ccw"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg></button>
-      <div class="joystick-area" id="joystick-p2"><div class="joystick-knob" id="knob-p2"></div></div>
-      <button class="rot-btn rot-btn-bottom" id="rot-p2-cw"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg></button>
+      <button class="rot-btn rot-btn-top" id="rot-p2-ccw"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em"
+          stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="1 4 1 10 7 10"></polyline>
+          <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+        </svg></button>
+      <div class="joystick-area" id="joystick-p2">
+        <div class="joystick-knob" id="knob-p2"></div>
+      </div>
+      <button class="rot-btn rot-btn-bottom" id="rot-p2-cw"><svg viewBox="0 0 24 24" width="1.2em" height="1.2em"
+          stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="23 4 23 10 17 10"></polyline>
+          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+        </svg></button>
     </div>
   </div>
 
-<script id="main-js" src="game.js"></script>
+  <script id="main-js" src="game.js"></script>
 </body>
 
 </html>
