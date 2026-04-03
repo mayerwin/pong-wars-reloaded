@@ -795,6 +795,7 @@ body.is-mobile:not(.has-fine-pointer).game-active #made {
     gap: 2px;
     padding: 4px 0;
     border-radius: 4px;
+    overflow: hidden;
     font-family: monospace;
     font-size: 10px;
     color: #D9E8E3;
@@ -862,12 +863,12 @@ body.is-mobile:not(.has-fine-pointer).game-active #made {
   /* Progress track */
   body.is-mobile.has-fine-pointer.game-active .side-hud-bar .side-prog-track {
     width: 6px;
-    border-radius: 0;
+    border-radius: 3px;
     overflow: hidden;
     display: flex;
     flex-direction: column;
     box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.15);
-    margin: -4px 0;
+    margin: 0;
     align-self: stretch;
   }
 

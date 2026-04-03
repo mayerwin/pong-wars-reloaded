@@ -86,6 +86,7 @@ const DEFAULT_ADV = {
   powerupDuration: 40,
   progressionBar: true,
   freeMovement: false,
+  mirroredPowerups: false,
   touchControls: null, // null = auto-detect, true/false = manual override
   theme: 'cyber',
   ai1Difficulty: 'medium', // Day AI
@@ -928,6 +929,10 @@ const MIN_RACKET_HEIGHT = SQUARE_SIZE * 3; // minimum racket height (3 blocks)
 const MAX_EFFECT_STACKS = 3;  // max concurrent stacks per effect type
 const MAX_EXTRA_BALLS = 8;    // max extra balls per team
 
+// Mirrored powerup sequence state
+let mirroredSeq = [];   // shuffled copy of POWERUP_TYPES, shared by both teams
+let mirroredIdx = 0;    // current index into mirroredSeq
+
 function updatePowerups() {
   const now = game.tickCount / TICK_RATE;
   const freq = settings.powerupFrequency;
@@ -1008,7 +1013,17 @@ function spawnPowerup(color) {
       if (squares[i][j] === color) candidates.push({ i, j });
   if (candidates.length < 5) return;
   const pos = candidates[Math.floor(Math.random() * candidates.length)];
-  const type = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
+  let type;
+  if (settings.mirroredPowerups) {
+    // Both teams draw from the same shuffled sequence
+    if (mirroredSeq.length === 0 || mirroredIdx >= mirroredSeq.length) {
+      mirroredSeq = [...POWERUP_TYPES].sort(() => Math.random() - 0.5);
+      mirroredIdx = 0;
+    }
+    type = mirroredSeq[mirroredIdx++];
+  } else {
+    type = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
+  }
   powerups.push({ type, gridX: pos.i, gridY: pos.j, pulsePhase: Math.random() * Math.PI * 2, spawnTime: game.tickCount / TICK_RATE });
 }
 
@@ -1505,6 +1520,24 @@ document.addEventListener('keydown', e => {
     else if (!document.getElementById('settings-overlay').classList.contains('hidden')) closeSettings();
   }
   if (key === ' ' && game.state === 'menu') startGame();
+  if (key === 'Enter') {
+    // Submit the primary button of the currently visible overlay/menu
+    const targets = [
+      ['keybind-overlay', 'close-keys-btn'],
+      ['settings-overlay', 'close-settings-btn'],
+      ['pause-overlay', 'resume-btn'],
+      ['gameover', 'play-again-btn'],
+      ['menu', 'start-btn'],
+    ];
+    for (const [overlayId, btnId] of targets) {
+      const overlay = document.getElementById(overlayId);
+      if (overlay && !overlay.classList.contains('hidden')) {
+        e.preventDefault();
+        document.getElementById(btnId)?.click();
+        break;
+      }
+    }
+  }
 });
 document.addEventListener('keyup', e => { keys[normalizeKey(e.key)] = false; });
 
@@ -1734,6 +1767,7 @@ function syncSettingsUI() {
 
   // Gameplay
   setToggle('free-move-toggle', settings.freeMovement ? 'on' : 'off');
+  setToggle('pu-mirror-toggle', settings.mirroredPowerups ? 'on' : 'off');
   setToggle('touch-mode-toggle', touchMode ? 'on' : 'off');
   setToggle('theme-toggle', settings.theme || 'cyber');
   const touchRow = document.getElementById('touch-mode-row');
@@ -1763,6 +1797,7 @@ function setupSettingsUI() {
     'fx-particles': v => { settings.particles = v === 'on'; },
     'fx-progbar': v => { settings.progressionBar = v === 'on'; },
     'free-move-toggle': v => { settings.freeMovement = v === 'on'; },
+    'pu-mirror-toggle': v => { settings.mirroredPowerups = v === 'on'; },
     'theme-toggle': v => { settings.theme = v; applyTheme(v); },
     'touch-mode-toggle': v => {
       touchMode = v === 'on';
@@ -1821,6 +1856,7 @@ function setupSettingsUI() {
     powerupFrequency: () => { settings.powerupFrequency = DEFAULT_ADV.powerupFrequency; syncSettingsUI(); saveSettings(); },
     powerupDuration: () => { settings.powerupDuration = DEFAULT_ADV.powerupDuration; syncSettingsUI(); saveSettings(); },
     freeMovement: () => { settings.freeMovement = DEFAULT_ADV.freeMovement; syncSettingsUI(); saveSettings(); },
+    mirroredPowerups: () => { settings.mirroredPowerups = DEFAULT_ADV.mirroredPowerups; syncSettingsUI(); saveSettings(); },
     theme: () => { settings.theme = DEFAULT_ADV.theme; applyTheme(settings.theme); syncSettingsUI(); saveSettings(); },
     touchControls: () => {
       settings.touchControls = null;
@@ -2019,6 +2055,7 @@ function startGame() {
   teleportState = { p1: { holdFrames: 0, remaining: TELEPORT_MAX }, p2: { holdFrames: 0, remaining: TELEPORT_MAX } };
   dayScore = TOTAL_SQUARES / 2; nightScore = TOTAL_SQUARES / 2;
   lastSpawn = { day: 0, night: 0 };
+  mirroredSeq = []; mirroredIdx = 0;
   aiState = { p1: { targetX: player1.cx, targetY: player1.cy, reactionCounter: 0 }, p2: { targetX: player2.cx, targetY: player2.cy, reactionCounter: 0 } };
 
   game.state = 'playing'; game.tickCount = 0; game.winner = null;
