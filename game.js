@@ -1015,12 +1015,14 @@ function spawnPowerup(color) {
   const pos = candidates[Math.floor(Math.random() * candidates.length)];
   let type;
   if (settings.mirroredPowerups) {
-    // Both teams draw from the same shuffled sequence
-    if (mirroredSeq.length === 0 || mirroredIdx >= mirroredSeq.length) {
-      mirroredSeq = [...POWERUP_TYPES].sort(() => Math.random() - 0.5);
-      mirroredIdx = 0;
+    const team = (color === DAY_COLOR) ? 'day' : 'night';
+    // If this team needs a powerup that hasn't been generated yet, 
+    // append a new batch to the global sequence.
+    if (mirroredIdx[team] >= mirroredSeq.length) {
+      const nextBatch = [...POWERUP_TYPES].sort(() => Math.random() - 0.5);
+      mirroredSeq.push(...nextBatch);
     }
-    type = mirroredSeq[mirroredIdx++];
+    type = mirroredSeq[mirroredIdx[team]++];
   } else {
     type = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
   }
@@ -2055,7 +2057,7 @@ function startGame() {
   teleportState = { p1: { holdFrames: 0, remaining: TELEPORT_MAX }, p2: { holdFrames: 0, remaining: TELEPORT_MAX } };
   dayScore = TOTAL_SQUARES / 2; nightScore = TOTAL_SQUARES / 2;
   lastSpawn = { day: 0, night: 0 };
-  mirroredSeq = []; mirroredIdx = 0;
+  mirroredSeq = []; mirroredIdx = { day: 0, night: 0 };
   aiState = { p1: { targetX: player1.cx, targetY: player1.cy, reactionCounter: 0 }, p2: { targetX: player2.cx, targetY: player2.cy, reactionCounter: 0 } };
 
   game.state = 'playing'; game.tickCount = 0; game.winner = null;
