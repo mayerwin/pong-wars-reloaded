@@ -230,7 +230,7 @@ body.is-mobile.game-active .mobile-panel {
   width: auto;
   grid-template-columns: auto auto;
   grid-template-rows: 1fr 1fr;
-  gap: 4px 12px;
+  gap: 14px 12px;
   align-items: center;
   justify-items: center;
   padding: 6px 10px;
@@ -295,7 +295,7 @@ body.is-mobile.has-fine-pointer.game-active.ai-mode #mobile-panel-left {
 
 .rotate-btns {
   display: flex;
-  gap: 6px;
+  gap: 16px;
 }
 
 .rot-btn {
@@ -484,7 +484,7 @@ body.is-mobile:not(.has-fine-pointer).game-active #made {
      Right player faces left: rotate 90° CCW → joystick at bottom (player's right), buttons at top (player's left). */
   body.is-mobile.game-active .mobile-panel {
     flex-shrink: 0;
-    gap: 4px 80px;
+    gap: 14px 80px;
   }
 
   /* Pin panels to screen edges and rotate. translateX pushes them to the right from the player's perspective */
