@@ -490,18 +490,18 @@ body.is-mobile:not(.has-fine-pointer).game-active #made {
   /* Pin panels to screen edges and rotate. translateX pushes them to the right from the player's perspective */
   body.is-mobile:not(.has-fine-pointer).game-active #mobile-panel-left {
     position: fixed;
-    left: -20px;
+    left: 0px;
     /* changed from 22px to compensate for rotated box dimensions */
     top: 50%;
-    transform: translateY(-50%) rotate(90deg) translateX(70px);
+    transform: translateY(-50%) rotate(90deg) translateX(30px);
   }
 
   body.is-mobile:not(.has-fine-pointer).game-active #mobile-panel-right {
     position: fixed;
-    right: -20px;
+    right: 0px;
     /* changed from 22px to compensate for rotated box dimensions */
     top: 50%;
-    transform: translateY(-50%) rotate(-90deg) translateX(70px);
+    transform: translateY(-50%) rotate(-90deg) translateX(30px);
   }
 
   /* --- Layout: applies to ALL small screens (touch on or off) --- */
