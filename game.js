@@ -32,7 +32,7 @@ const BASE_PLAYER_HEIGHT = SQUARE_SIZE * 6; // 6 squares tall (20% longer than 5
 
 const ROTATION_SPEED = 6 * Math.PI / 180; // 6 degrees per frame
 
-const DOMINATION_THRESHOLD = 0.75;
+const DOMINATION_THRESHOLD = 0.8;
 const BIGGER_BALL_MULT = 2.0;
 const BIGGER_RACKET_MULT = 1.6;
 const FASTER_BALL_MULT = 1.4;
@@ -1990,6 +1990,7 @@ function showMenu() {
   document.getElementById('gameover').classList.add('hidden');
   document.getElementById('pause-overlay').classList.add('hidden');
   document.getElementById('settings-overlay').classList.add('hidden');
+  if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
   // Clear inline styles that would override CSS display rules
   document.getElementById('progression-bar').style.display = '';
 }
@@ -2028,7 +2029,12 @@ function startGame() {
   document.getElementById('keybind-overlay').classList.add('hidden');
   document.getElementById('settings-overlay').classList.add('hidden');
   document.body.classList.add('game-active');
-  document.body.classList.toggle('ai-mode', settings.mode === 'ai');
+  document.body.classList.toggle('ai-mode', settings.mode !== '2p');
+
+  // For 2P mode on mobile, attempt to force landscape to avoid overlapping controls
+  if (settings.mode === '2p' && hasTouch && screen.orientation && screen.orientation.lock) {
+    screen.orientation.lock('landscape').catch(() => { });
+  }
 
   squares = [];
   for (let i = 0; i < NUM_SQUARES; i++) {
@@ -2089,29 +2095,52 @@ function initJoysticks() {
 }
 if (touchMode) initJoysticks();
 
-// Fullscreen button (always wire up — touch mode can be toggled on later)
-if (hasTouch) {
-  const fsBtn = document.getElementById('fullscreen-btn');
+// Fullscreen button (always wire up if it exists)
+const fsBtn = document.getElementById('fullscreen-btn');
+if (fsBtn) {
   function updateFsIcon() {
-    fsBtn.textContent = document.fullscreenElement ? '\u2716' : '\u26F6';
+    const isFs = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement;
+    fsBtn.textContent = isFs ? '\u2716' : '\u26F6';
   }
-  fsBtn.addEventListener('click', async () => {
-    if (!document.fullscreenElement) {
+  fsBtn.addEventListener('click', () => {
+    const isFs = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement;
+    if (!isFs) {
       try {
-        await document.documentElement.requestFullscreen();
+        const docEl = document.documentElement;
+        const req = docEl.requestFullscreen ||
+          docEl.webkitRequestFullscreen ||
+          docEl.mozRequestFullScreen ||
+          docEl.msRequestFullscreen;
+        if (req) {
+          const res = req.call(docEl);
+          if (res && res.catch) res.catch(e => { });
+        }
+
         // In 2P mode, lock to landscape; in AI mode allow any orientation
         if (screen.orientation && screen.orientation.lock) {
           if (settings.mode !== 'ai') {
             screen.orientation.lock('landscape').catch(() => { });
           }
         }
-      } catch (e) { }
+      } catch (e) {
+        console.error('Fullscreen request failed:', e);
+      }
     } else {
+      const exitFs = document.exitFullscreen ||
+        document.webkitExitFullscreen ||
+        document.mozCancelFullScreen ||
+        document.msExitFullscreen;
       if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
-      document.exitFullscreen().catch(() => { });
+      if (exitFs) {
+        try {
+          const res = exitFs.call(document);
+          if (res && res.catch) res.catch(e => { });
+        } catch (e) { }
+      }
     }
   });
-  document.addEventListener('fullscreenchange', updateFsIcon);
+  const updateFsEvents = ['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange'];
+  updateFsEvents.forEach(evt => document.addEventListener(evt, updateFsIcon));
 
   // Gesture blocking: CSS touch-action:none on html/body handles most browsers natively.
   // We attach a passive listener here just in case, but rely heavily on CSS.

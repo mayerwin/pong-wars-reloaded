@@ -251,16 +251,80 @@ body.is-mobile.game-active .mobile-panel .joystick-area {
   grid-column: 2;
 }
 
-body.is-mobile.game-active.ai-mode .mobile-panel {
-  display: none;
+/* Premium 'large-scale' controls component system */
+body.is-mobile.game-active .mobile-panel.large-controls {
+  gap: 14px 80px;
 }
 
-/* Desktop touch + AI: show P1 panel (desktop layout with controls added) */
-body.is-mobile.has-fine-pointer.game-active.ai-mode #mobile-panel-left {
-  display: flex;
+body.is-mobile.game-active .mobile-panel.large-controls .joystick-area {
+  width: 84px;
+  height: 84px;
+}
+
+body.is-mobile.game-active .mobile-panel.large-controls .joystick-knob {
+  width: 36px;
+  height: 36px;
+}
+
+body.is-mobile.game-active .mobile-panel.large-controls .rot-btn {
+  width: 62px;
+  height: 62px;
+  font-size: 24px;
+}
+
+
+/* Unified Solo Desktop Touch Layout (Strictly for laptops/monitors with touch enabled) */
+body.is-mobile.has-fine-pointer.game-active.ai-mode #made,
+body.is-mobile.has-fine-pointer.game-active.ai-mode .side-hud-bar,
+body.is-mobile.has-fine-pointer.game-active.ai-mode #mobile-panel-left,
+body.is-mobile.has-fine-pointer.game-active.ai-mode #mobile-panel-right {
+  display: none !important;
+}
+
+body.is-mobile.has-fine-pointer.game-active.ai-mode #hud,
+body.is-mobile.has-fine-pointer.game-active.ai-mode #progression-bar {
+  display: flex !important;
+}
+
+body.is-mobile.has-fine-pointer.game-active.ai-mode #mobile-panel-bottom {
+  display: grid !important;
+  position: fixed;
+  bottom: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: auto;
+  margin: 0;
+  z-index: 10;
+}
+
+body.is-mobile.has-fine-pointer.game-active.ai-mode #game-wrapper {
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  padding-top: 2vh !important;
+}
+
+body.is-mobile.has-fine-pointer.game-active.ai-mode #container {
+  width: auto !important;
+  max-width: 100% !important;
+  margin: 0 auto 5vh auto !important;
+  flex: 0 0 auto !important;
+}
+
+body.is-mobile.has-fine-pointer.game-active.ai-mode #pongCanvas {
+  /* Restore square aspect ratio and cap height to clear the bottom panel */
+  aspect-ratio: 1 / 1 !important;
+  width: auto !important;
+  height: min(calc(100vh - 275px), 600px) !important;
+  margin-top: 0 !important;
 }
 
 #mobile-panel-bottom {
+  display: none;
+}
+
+/* Base AI Mode hiding: ensure right panel is always hidden in solo matches */
+body.is-mobile.game-active.ai-mode #mobile-panel-right {
   display: none;
 }
 
@@ -337,7 +401,7 @@ body.is-mobile.has-fine-pointer.game-active.ai-mode #mobile-panel-left {
   padding: 0;
 }
 
-body.is-mobile:not(.has-fine-pointer).game-active #fullscreen-btn {
+body.is-mobile.game-active #fullscreen-btn {
   display: flex;
 }
 
@@ -360,12 +424,12 @@ body.is-mobile:not(.has-fine-pointer).game-active #fullscreen-btn {
   padding: 0;
 }
 
-body.is-mobile:not(.has-fine-pointer).game-active #pause-btn {
+body.is-mobile.game-active #pause-btn {
   display: flex;
 }
 
-/* Hide gear button on mobile (pause menu has settings access) */
-body.is-mobile:not(.has-fine-pointer) #gear-btn {
+/* Hide gear button on mobile/touch (pause menu has settings access) */
+body.is-mobile #gear-btn {
   display: none;
 }
 
@@ -383,36 +447,40 @@ body.is-mobile:not(.has-fine-pointer).game-active #made {
 /* ==================== PORTRAIT MOBILE IN-GAME ==================== */
 @media (orientation: portrait) {
 
-  /* --- Layout: applies to ALL small screens (touch on or off) --- */
-  body.is-small-screen.game-active #game-wrapper {
+  /* --- Layout: applies to all mobile/touch-active devices --- */
+  body.is-mobile.game-active #made {
+    display: none;
+  }
+
+  body.is-mobile.game-active #game-wrapper {
     flex-direction: row;
     flex-wrap: wrap;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
     align-content: center;
     gap: 0;
   }
 
-  body.is-small-screen.game-active #container {
+  body.is-mobile.game-active #container {
     width: 100%;
-    max-width: none;
+    max-width: 600px;
     padding: 0;
-    flex: 0 0 100%;
+    margin: 0 auto 20vh auto;
+    flex: 0 0 auto;
     order: 0;
     height: auto;
-    margin-bottom: 20vh;
   }
 
-  body.is-small-screen.game-active #pongCanvas {
+  body.is-mobile.game-active #pongCanvas {
     margin-top: 0;
   }
 
-  body.is-small-screen.game-active .side-hud-bar {
+  body.is-mobile.game-active .side-hud-bar {
     display: none !important;
   }
 
   /* --- Touch controls: only when touch enabled --- */
-  body.is-mobile:not(.has-fine-pointer).game-active #mobile-panel-left {
+  body.is-mobile.game-active #mobile-panel-left {
     order: 1;
     margin-left: 26px;
     position: fixed;
@@ -420,7 +488,7 @@ body.is-mobile:not(.has-fine-pointer).game-active #made {
     left: 0;
   }
 
-  body.is-mobile:not(.has-fine-pointer).game-active #mobile-panel-right {
+  body.is-mobile.game-active #mobile-panel-right {
     order: 2;
     margin-right: 26px;
     position: fixed;
@@ -428,40 +496,40 @@ body.is-mobile:not(.has-fine-pointer).game-active #made {
     right: 0;
   }
 
-  body.is-mobile:not(.has-fine-pointer).game-active .joystick-area {
+  /* Standard portrait sizes (applied to 2P mode side-panels if not overridden) */
+  body.is-mobile.game-active .mobile-panel:not(.large-controls) .joystick-area {
     width: 62px;
     height: 62px;
   }
 
-  body.is-mobile:not(.has-fine-pointer).game-active .joystick-knob {
+  body.is-mobile.game-active .mobile-panel:not(.large-controls) .joystick-knob {
     width: 26px;
     height: 26px;
   }
 
-  body.is-mobile:not(.has-fine-pointer).game-active .rot-btn {
+  body.is-mobile.game-active .mobile-panel:not(.large-controls) .rot-btn {
     width: 48px;
     height: 48px;
     font-size: 19px;
   }
 
-  /* AI mode touch controls */
-  body.is-mobile:not(.has-fine-pointer).game-active.ai-mode .mobile-panel {
+  /* AI mode touch controls: hide side panels and use centered bottom panel (Mobile Only) */
+  body.is-mobile:not(.has-fine-pointer).game-active.ai-mode #mobile-panel-left,
+  body.is-mobile:not(.has-fine-pointer).game-active.ai-mode #mobile-panel-right {
     display: none;
   }
 
-  body.is-mobile:not(.has-fine-pointer).game-active.ai-mode #container {
-    width: 100%;
-  }
-
-  /* AI mode touch controls centered at the bottom */
   body.is-mobile:not(.has-fine-pointer).game-active.ai-mode #mobile-panel-bottom {
     display: grid;
     position: fixed;
     bottom: 72px;
     left: 50%;
     transform: translateX(-50%);
+  }
+
+  body.is-mobile:not(.has-fine-pointer).game-active.ai-mode #container {
     width: auto;
-    margin: 0;
+    max-width: 100%;
   }
 }
 
@@ -472,9 +540,44 @@ body.is-mobile:not(.has-fine-pointer).game-active #made {
      Standard layout: buttons col 1, joystick col 2 (buttons-left, joystick-right).
      Left player faces right: rotate 90° CW → joystick at bottom (player's right), buttons at top (player's left).
      Right player faces left: rotate 90° CCW → joystick at bottom (player's right), buttons at top (player's left). */
-  body.is-mobile.game-active .mobile-panel {
+  /* --- PREMIUM CONTROL COMPONENT: Standard layout for side panels --- */
+  body.is-mobile.game-active #mobile-panel-left,
+  body.is-mobile.game-active #mobile-panel-right {
+    display: grid;
     flex-shrink: 0;
     gap: 14px 80px;
+  }
+
+  /* In landscape AI mode, explicitly hide the right panel */
+  body.is-mobile.game-active.ai-mode #mobile-panel-right {
+    display: none !important;
+  }
+
+  /* Control sizes for all premium panels (both orientations) */
+  body.is-mobile.game-active #mobile-panel-left .joystick-area,
+  body.is-mobile.game-active #mobile-panel-right .joystick-area,
+  body.is-mobile.game-active.ai-mode #mobile-panel-bottom .joystick-area {
+    width: 84px;
+    height: 84px;
+  }
+  body.is-mobile.game-active #mobile-panel-left .joystick-knob,
+  body.is-mobile.game-active #mobile-panel-right .joystick-knob,
+  body.is-mobile.game-active.ai-mode #mobile-panel-bottom .joystick-knob {
+    width: 36px;
+    height: 36px;
+  }
+  body.is-mobile.game-active #mobile-panel-left .rot-btn,
+  body.is-mobile.game-active #mobile-panel-right .rot-btn,
+  body.is-mobile.game-active.ai-mode #mobile-panel-bottom .rot-btn {
+    width: 62px;
+    height: 62px;
+    font-size: 24px;
+  }
+
+  /* --- Orientation Overrides --- */
+  body.is-mobile.game-active .mobile-panel:not(.large-controls) {
+    /* Lower gap for small orientation-specific panels */
+    gap: 14px 12px;
   }
 
   /* Pin panels to screen edges and rotate. translateX pushes them to the right from the player's perspective */
@@ -666,17 +769,20 @@ body.is-mobile:not(.has-fine-pointer).game-active #made {
     display: none;
   }
 
-  body.is-mobile:not(.has-fine-pointer).game-active .joystick-area {
+  body.is-mobile:not(.has-fine-pointer).game-active .joystick-area,
+  body.is-mobile:not(.has-fine-pointer).game-active.ai-mode #mobile-panel-bottom .joystick-area {
     width: 84px;
     height: 84px;
   }
 
-  body.is-mobile:not(.has-fine-pointer).game-active .joystick-knob {
+  body.is-mobile:not(.has-fine-pointer).game-active .joystick-knob,
+  body.is-mobile:not(.has-fine-pointer).game-active.ai-mode #mobile-panel-bottom .joystick-knob {
     width: 36px;
     height: 36px;
   }
 
-  body.is-mobile:not(.has-fine-pointer).game-active .rot-btn {
+  body.is-mobile:not(.has-fine-pointer).game-active .rot-btn,
+  body.is-mobile:not(.has-fine-pointer).game-active.ai-mode #mobile-panel-bottom .rot-btn {
     width: 62px;
     height: 62px;
     font-size: 24px;
@@ -721,7 +827,7 @@ body.is-mobile:not(.has-fine-pointer).game-active #made {
 
   /* Container + canvas: landscape layout like mobile, capped to same max as non-touch */
   body.is-mobile.has-fine-pointer.game-active #game-wrapper {
-    align-items: stretch;
+    align-items: center;
   }
 
   body.is-mobile.has-fine-pointer.game-active #container {
@@ -735,6 +841,12 @@ body.is-mobile:not(.has-fine-pointer).game-active #made {
     width: auto;
     height: min(calc(100vh - 46px), 600px);
     aspect-ratio: 1 / 1;
+    margin-top: auto;
+  }
+
+  body.is-mobile.has-fine-pointer.game-active.ai-mode #pongCanvas {
+    /* Adjust canvas height in AI mode to fit the bottom panel */
+    height: min(calc(100vh - 165px), 600px);
     margin-top: auto;
   }
 
@@ -754,41 +866,33 @@ body.is-mobile:not(.has-fine-pointer).game-active #made {
   }
 
   /* Control sizes — same as mobile landscape */
-  body.is-mobile.has-fine-pointer.game-active .joystick-area {
+  body.is-mobile.has-fine-pointer.game-active .joystick-area,
+  body.is-mobile.has-fine-pointer.game-active.ai-mode #mobile-panel-bottom .joystick-area {
     width: 84px;
     height: 84px;
   }
 
-  body.is-mobile.has-fine-pointer.game-active .joystick-knob {
+  body.is-mobile.has-fine-pointer.game-active .joystick-knob,
+  body.is-mobile.has-fine-pointer.game-active.ai-mode #mobile-panel-bottom .joystick-knob {
     width: 36px;
     height: 36px;
   }
 
-  body.is-mobile.has-fine-pointer.game-active .rot-btn {
+  body.is-mobile.has-fine-pointer.game-active .rot-btn,
+  body.is-mobile.has-fine-pointer.game-active.ai-mode #mobile-panel-bottom .rot-btn {
     width: 62px;
     height: 62px;
     font-size: 24px;
   }
 
-  /* AI mode — show P1 panel only */
-  body.is-mobile.has-fine-pointer.game-active.ai-mode #mobile-panel-left {
-    display: grid;
+  /* In AI mode on desktop touch, hide side HUDs and use standard top HUD */
+  body.is-mobile.has-fine-pointer.game-active.ai-mode .side-hud-bar {
+    display: none !important;
   }
 
-  body.is-mobile.has-fine-pointer.game-active .side-hud-bar {
-    display: grid;
-    flex-shrink: 0;
-    flex-grow: 0;
-    align-self: flex-start;
-    grid-template-rows: auto 1fr auto;
-    align-content: start;
-    gap: 2px;
-    padding: 4px 0;
-    border-radius: 4px;
-    overflow: hidden;
-    font-family: monospace;
-    font-size: 10px;
-    color: #D9E8E3;
+  body.is-mobile.has-fine-pointer.game-active.ai-mode #hud,
+  body.is-mobile.has-fine-pointer.game-active.ai-mode #progression-bar {
+    display: flex !important;
   }
 
   /* Left bar: [text | prog] */
@@ -979,7 +1083,28 @@ body.is-mobile:not(.has-fine-pointer).game-active #made {
 }
 
 .overlay.hidden {
-  display: none;
+  display: none !important;
+}
+
+#rotate-overlay {
+  display: none !important;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(17, 43, 54, 0.98);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  z-index: 10000;
+  flex-direction: column;
+  color: #D9E8E3;
+}
+
+@media (orientation: portrait) {
+  body.is-mobile.game-active:not(.ai-mode) #rotate-overlay {
+    display: flex !important;
+  }
 }
 
 /* Menu overlay on launch: cover entire viewport with solid bg (no game area visible) */
