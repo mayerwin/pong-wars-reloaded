@@ -1,6 +1,5 @@
-// ==================== CONSTANTS ====================
-let ACCENT = '#B73E86';
-let PU_COLOR = '#E8A820';
+let ACCENT = '#00D2D3';
+let PU_COLOR = '#00D2D3';
 
 const colorPalette = {
   ArcticPowder: "#F1F6F4",
@@ -129,13 +128,20 @@ function applyTheme(themeName) {
   if (themeName !== 'cyber') {
     document.body.classList.add('theme-' + themeName);
   }
+  syncThemeColors();
+}
 
+function syncThemeColors() {
   // Reflow to ensure CSS variables are applied
   void document.body.offsetHeight;
 
   const rootStyles = getComputedStyle(document.body);
-  ACCENT = rootStyles.getPropertyValue('--ui-accent').trim() || '#00D2D3';
-  PU_COLOR = rootStyles.getPropertyValue('--powerup-color').trim() || '#00D2D3';
+  const cssAccent = rootStyles.getPropertyValue('--ui-accent').trim();
+  const cssPuColor = rootStyles.getPropertyValue('--powerup-color').trim();
+
+  // Update variables (use Cyber cyan as fallback if CSS hasn't loaded yet)
+  ACCENT = cssAccent || '#00D2D3';
+  PU_COLOR = cssPuColor || '#00D2D3';
   colorPalette.Forsythia = ACCENT;
 }
 
@@ -2153,3 +2159,6 @@ if (fsBtn) {
 }
 
 requestAnimationFrame(gameLoop);
+
+// Final color sync once all external stylesheets are definitely loaded
+window.addEventListener('load', syncThemeColors);
