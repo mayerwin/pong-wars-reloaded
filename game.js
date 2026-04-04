@@ -932,8 +932,13 @@ const POWERUP_TYPES = ['BIGGER_BALL', 'EXTRA_BALL', 'BIGGER_RACKET', 'FASTER_BAL
 const POWERUP_HUD = { BIGGER_BALL: '\u25C9', EXTRA_BALL: '\u271A', BIGGER_RACKET: '\u21D5', FASTER_BALL: '\u00BB', SHRINK_RACKET: '\u2913' };
 const POWERUP_NAMES = { BIGGER_BALL: 'Big Ball', EXTRA_BALL: 'Extra Ball', BIGGER_RACKET: 'Big Racket', FASTER_BALL: 'Fast Ball', SHRINK_RACKET: 'Shrink Foe' };
 const MIN_RACKET_HEIGHT = SQUARE_SIZE * 3; // minimum racket height (3 blocks)
-const MAX_EFFECT_STACKS = 3;  // max concurrent stacks per effect type
-const MAX_EXTRA_BALLS = 8;    // max extra balls per team
+const POWERUP_LIMITS = {
+  BIGGER_BALL: 3,
+  EXTRA_BALL: 8,
+  BIGGER_RACKET: 2,
+  FASTER_BALL: 3,
+  SHRINK_RACKET: 3,
+};
 
 // Mirrored powerup sequence state
 let mirroredSeq = [];   // shuffled copy of POWERUP_TYPES, shared by both teams
@@ -1041,7 +1046,7 @@ function collectPowerup(pu, collector) {
   const dur = settings.powerupDuration;
   if (pu.type === 'EXTRA_BALL') {
     const extraCount = balls.filter(b => b.team === team && b.isExtra && now < b.expiresAt).length;
-    if (extraCount >= MAX_EXTRA_BALLS) {
+    if (extraCount >= POWERUP_LIMITS.EXTRA_BALL) {
       // Replace oldest extra ball's expiry to extend duration
       let oldest = null;
       for (const b of balls) {
@@ -1062,7 +1067,8 @@ function collectPowerup(pu, collector) {
     const effectTeam = pu.type === 'SHRINK_RACKET' ? (team === 'day' ? 'night' : 'day') : team;
     if (!activeEffects[effectTeam][pu.type]) activeEffects[effectTeam][pu.type] = [];
     const arr = activeEffects[effectTeam][pu.type];
-    if (arr.length >= MAX_EFFECT_STACKS) {
+    const limit = POWERUP_LIMITS[pu.type] || 3;
+    if (arr.length >= limit) {
       // Replace oldest (earliest expiry) to extend duration
       let minIdx = 0;
       for (let i = 1; i < arr.length; i++) { if (arr[i] < arr[minIdx]) minIdx = i; }
