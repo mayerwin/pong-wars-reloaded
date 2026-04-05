@@ -58,9 +58,16 @@ function applyTouchMode() {
 }
 applyTouchMode();
 
+const DEBUG_BALL_SHADOWS = false; // set true to draw persistent purple shadow at each ball render position
+
 // ==================== DOM REFS ====================
 const canvas = document.getElementById("pongCanvas");
 const ctx = canvas.getContext("2d");
+
+// Debug offscreen canvas (never cleared) for persistent ball shadows
+const debugCanvas = document.createElement("canvas");
+debugCanvas.width = canvas.width; debugCanvas.height = canvas.height;
+const debugCtx = debugCanvas.getContext("2d");
 const dayScoreEl = document.getElementById("day-score");
 const nightScoreEl = document.getElementById("night-score");
 const timerEl = document.getElementById("timer-display");
@@ -85,7 +92,7 @@ const DEFAULT_ADV = {
   powerupDuration: 40,
   progressionBar: true,
   freeMovement: false,
-  mirroredPowerups: false,
+  mirroredPowerups: true,
   touchControls: null, // null = auto-detect, true/false = manual override
   theme: 'cyber',
   ai1Difficulty: 'medium', // Day AI
@@ -743,28 +750,78 @@ function updateBalls() {
     const fastStacks = effectStacks(ball.team, 'FASTER_BALL', now);
     const speedMult = fastStacks > 0 ? Math.pow(FASTER_BALL_MULT, fastStacks) : 1;
 
-    if (ball.skipSquareCheck > 0) ball.skipSquareCheck--;
-    else checkSquareCollision(ball);
-
-    // Sub-step movement to prevent ball passing through rackets
     const totalSpeed = Math.sqrt(ball.dx * ball.dx + ball.dy * ball.dy) * speedMult;
-    const subSteps = Math.max(1, Math.ceil(totalSpeed / ball.radius));
+    const subSteps = Math.max(2, Math.ceil(totalSpeed / (ball.radius * 0.5))); // higher density for trails
     const subDt = speedMult / subSteps;
+
+    ball.bounceT = -1; // Reset per tick
     for (let s = 0; s < subSteps; s++) {
-      ball.x += ball.dx * subDt;
-      ball.y += ball.dy * subDt;
+      const startX = ball.x;
+      const startY = ball.y;
+      const moveX = ball.dx * subDt;
+      const moveY = ball.dy * subDt;
+      const nx = startX + moveX;
+      const ny = startY + moveY;
+
+      // X-boundary
+      if (nx >= CANVAS_SIZE - ball.radius && ball.dx > 0) {
+        const t = Math.max(0, (CANVAS_SIZE - ball.radius - startX) / moveX);
+        ball.bounceX = CANVAS_SIZE - ball.radius;
+        ball.bounceY = startY + moveY * t;
+        ball.bounceT = (s + t) / subSteps;
+        ball.x = ball.bounceX; ball.dx = -ball.dx;
+        ball.x += ball.dx * subDt * (1 - t);
+      } else if (nx <= ball.radius && ball.dx < 0) {
+        const t = Math.max(0, (ball.radius - startX) / moveX);
+        ball.bounceX = ball.radius;
+        ball.bounceY = startY + moveY * t;
+        ball.bounceT = (s + t) / subSteps;
+        ball.x = ball.bounceX; ball.dx = -ball.dx;
+        ball.x += ball.dx * subDt * (1 - t);
+      } else {
+        ball.x = nx;
+      }
+
+      // Y-boundary
+      if (ny >= CANVAS_SIZE - ball.radius && ball.dy > 0) {
+        const t = Math.max(0, (CANVAS_SIZE - ball.radius - startY) / moveY);
+        ball.bounceY = CANVAS_SIZE - ball.radius;
+        // Note: we use current updated ball.x if it just hit X, or ny if not. 
+        // Actually, to be super precise for bounceT, we store the Y contact.
+        if (ball.bounceT === -1 || (s + t) / subSteps < ball.bounceT) {
+          ball.bounceX = startX + moveX * t;
+          ball.bounceY = CANVAS_SIZE - ball.radius;
+          ball.bounceT = (s + t) / subSteps;
+        }
+        ball.y = CANVAS_SIZE - ball.radius; ball.dy = -ball.dy;
+        ball.y += ball.dy * subDt * (1 - t);
+      } else if (ny <= ball.radius && ball.dy < 0) {
+        const t = Math.max(0, (ball.radius - startY) / moveY);
+        if (ball.bounceT === -1 || (s + t) / subSteps < ball.bounceT) {
+          ball.bounceX = startX + moveX * t;
+          ball.bounceY = ball.radius;
+          ball.bounceT = (s + t) / subSteps;
+        }
+        ball.y = ball.radius; ball.dy = -ball.dy;
+        ball.y += ball.dy * subDt * (1 - t);
+      } else {
+        ball.y = ny;
+      }
+
+      if (ball.skipSquareCheck > 0) ball.skipSquareCheck--;
+      else checkSquareCollision(ball);
+
       checkRacketCollision(ball, player1);
       checkRacketCollision(ball, player2);
+      if (settings.effectsEnabled && settings.particles) {
+        ballTrails.push({ x: ball.x, y: ball.y, color: ball.ballColor, life: 1.0, radius: ball.radius * 0.4 });
+      }
     }
-    checkBoundaryCollision(ball, speedMult);
+    // Clamping still ensures no one-pixel escapes
     ball.x = Math.max(ball.radius, Math.min(CANVAS_SIZE - ball.radius, ball.x));
     ball.y = Math.max(ball.radius, Math.min(CANVAS_SIZE - ball.radius, ball.y));
 
     addRandomness(ball);
-
-    if (settings.effectsEnabled && settings.particles) {
-      ballTrails.push({ x: ball.x, y: ball.y, color: ball.ballColor, life: 1.0, radius: ball.radius * 0.5 });
-    }
   }
 
   // Ball-ball collision (elastic, handles different radii)
@@ -897,11 +954,7 @@ function checkRacketCollision(ball, player) {
   }
 }
 
-function checkBoundaryCollision(ball, speedMult) {
-  const nx = ball.x + ball.dx * speedMult, ny = ball.y + ball.dy * speedMult;
-  if ((nx >= CANVAS_SIZE - ball.radius && ball.dx > 0) || (nx <= ball.radius && ball.dx < 0)) ball.dx = -ball.dx;
-  if ((ny >= CANVAS_SIZE - ball.radius && ball.dy > 0) || (ny <= ball.radius && ball.dy < 0)) ball.dy = -ball.dy;
-}
+// Boundary prediction replaced by inline TOI logic in updateBalls
 
 function addRandomness(ball) {
   ball.dx += Math.random() * 0.02 - 0.01;
@@ -1244,7 +1297,7 @@ function updateParticles() {
     if (p.life <= 0) { particles[i] = particles[particles.length - 1]; particles.pop(); }
   }
   for (let i = ballTrails.length - 1; i >= 0; i--) {
-    ballTrails[i].life -= 0.08;
+    ballTrails[i].life -= 0.12; // Faster decay for more subtle, transient trails
     if (ballTrails[i].life <= 0) { ballTrails[i] = ballTrails[ballTrails.length - 1]; ballTrails.pop(); }
   }
   if (screenShake.intensity > 0) {
@@ -1349,7 +1402,7 @@ function drawPowerupIcon(cx, cy, type, size) {
   }
 }
 
-function render() {
+function render(alpha = 1) {
   ctx.save();
   if (settings.effectsEnabled && settings.screenShake && screenShake.intensity > 0) {
     ctx.translate((Math.random() - 0.5) * screenShake.intensity, (Math.random() - 0.5) * screenShake.intensity);
@@ -1378,7 +1431,7 @@ function render() {
     for (const t of ballTrails) {
       ctx.beginPath();
       ctx.arc(t.x, t.y, t.radius * t.life, 0, Math.PI * 2);
-      ctx.fillStyle = t.color; ctx.globalAlpha = t.life * 0.25;
+      ctx.fillStyle = t.color; ctx.globalAlpha = t.life * 0.1;
       ctx.fill(); ctx.closePath();
     }
     ctx.globalAlpha = 1;
@@ -1427,17 +1480,27 @@ function render() {
     const t = (Math.sin((teleportState.p2.holdFrames - TELEPORT_BLINK_START) * TELEPORT_BLINK_SPEED * Math.PI / TELEPORT_HOLD_FRAMES * 2) + 1) / 2;
     p2Color = hexLerp(NIGHT_BALL_COLOR, ACCENT, t);
   }
-  drawRotatedPlayer(player1, p1Color);
-  drawRotatedPlayer(player2, p2Color);
+  drawRotatedPlayer(player1, p1Color, alpha);
+  drawRotatedPlayer(player2, p2Color, alpha);
 
   // Balls
   for (const ball of balls) {
+    const drawX = ball.oldX + (ball.x - ball.oldX) * alpha;
+    const drawY = ball.oldY + (ball.y - ball.oldY) * alpha;
+
+    if (DEBUG_BALL_SHADOWS) {
+      debugCtx.beginPath();
+      debugCtx.arc(drawX, drawY, ball.radius, 0, Math.PI * 2);
+      debugCtx.fillStyle = "rgba(128,0,255,0.3)";
+      debugCtx.fill(); debugCtx.closePath();
+    }
+
     ctx.beginPath();
-    ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+    ctx.arc(drawX, drawY, ball.radius, 0, Math.PI * 2);
     ctx.fillStyle = ball.ballColor; ctx.fill(); ctx.closePath();
     if (ball.radius > BASE_BALL_RADIUS) {
       ctx.beginPath();
-      ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+      ctx.arc(drawX, drawY, ball.radius, 0, Math.PI * 2);
       ctx.strokeStyle = ACCENT; ctx.lineWidth = 1; ctx.stroke(); ctx.closePath();
     }
   }
@@ -1459,12 +1522,17 @@ function render() {
     }
   }
   ctx.restore();
+  if (DEBUG_BALL_SHADOWS) ctx.drawImage(debugCanvas, 0, 0);
 }
 
-function drawRotatedPlayer(player, fillColor) {
+function drawRotatedPlayer(player, fillColor, alpha = 1) {
+  const drawX = player.oldX + (player.cx - player.oldX) * alpha;
+  const drawY = player.oldY + (player.cy - player.oldY) * alpha;
+  const drawAngle = player.oldAngle + (player.angle - player.oldAngle) * alpha;
+
   ctx.save();
-  ctx.translate(player.cx, player.cy);
-  ctx.rotate(player.angle);
+  ctx.translate(drawX, drawY);
+  ctx.rotate(drawAngle);
   ctx.fillStyle = fillColor;
   ctx.fillRect(-player.width / 2, -player.height / 2, player.width, player.height);
   if (settings.effectsEnabled && settings.racketOutline) {
@@ -1501,11 +1569,16 @@ function gameLoop(timestamp) {
   const delta = Math.min(timestamp - lastFrameTime, 100);
   lastFrameTime = timestamp;
 
-  if (game.state === 'gameover') { updateParticles(); render(); return; }
+  if (game.state === 'gameover') { updateParticles(); render(1); return; }
   if (game.state !== 'playing') return;
 
   accumulator += delta;
   while (accumulator >= TICK_MS) {
+    // Record state for interpolation
+    player1.oldX = player1.cx; player1.oldY = player1.cy; player1.oldAngle = player1.angle;
+    player2.oldX = player2.cx; player2.oldY = player2.cy; player2.oldAngle = player2.angle;
+    for (const b of balls) { b.oldX = b.x; b.oldY = b.y; }
+
     game.tickCount++;
     updatePlayers();
     updateBalls();
@@ -1515,8 +1588,17 @@ function gameLoop(timestamp) {
     if (game.state !== 'playing') break;
     accumulator -= TICK_MS;
   }
+  // After physics: if a ball bounced this tick, start interpolation from the
+  // wall so the ball visually touches the edge before moving away.
+  for (const b of balls) {
+    if (b.bounceT > 0 && b.bounceT <= 1) {
+      b.oldX = b.bounceX;
+      b.oldY = b.bounceY;
+    }
+  }
   updateParticles();
-  render();
+  const alpha = accumulator / TICK_MS;
+  render(alpha);
   syncSideHudAlignment();
 }
 
@@ -2025,6 +2107,8 @@ document.addEventListener('click', e => {
 function makeBall(x, y, dx, dy, team) {
   return {
     x, y, dx, dy, team,
+    oldX: x, oldY: y,
+    bounceX: 0, bounceY: 0, bounceT: -1,
     paintColor: team === 'day' ? DAY_COLOR : NIGHT_COLOR,
     ballColor: team === 'day' ? DAY_BALL_COLOR : NIGHT_BALL_COLOR,
     radius: BASE_BALL_RADIUS, isExtra: false, expiresAt: Infinity,
@@ -2063,11 +2147,13 @@ function startGame() {
   const hw = BASE_PLAYER_WIDTH / 2;
   player1 = {
     cx: 30 + hw, cy: CANVAS_SIZE / 2, width: BASE_PLAYER_WIDTH, height: BASE_PLAYER_HEIGHT,
-    speed: BASE_PLAYER_SPEED, team: 'day', angle: 0
+    speed: BASE_PLAYER_SPEED, team: 'day', angle: 0,
+    oldX: 30 + hw, oldY: CANVAS_SIZE / 2, oldAngle: 0
   };
   player2 = {
     cx: CANVAS_SIZE - 30 - hw, cy: CANVAS_SIZE / 2, width: BASE_PLAYER_WIDTH, height: BASE_PLAYER_HEIGHT,
-    speed: BASE_PLAYER_SPEED, team: 'night', angle: 0
+    speed: BASE_PLAYER_SPEED, team: 'night', angle: 0,
+    oldX: CANVAS_SIZE - 30 - hw, oldY: CANVAS_SIZE / 2, oldAngle: 0
   };
 
   powerups = []; activeEffects = { day: {}, night: {} };
