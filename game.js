@@ -29,12 +29,11 @@ const BASE_PLAYER_SPEED = 12;
 const BASE_PLAYER_WIDTH = SQUARE_SIZE;
 const BASE_PLAYER_HEIGHT = SQUARE_SIZE * 6; // 6 squares tall (20% longer than 5)
 
-const ROTATION_SPEED = 6 * Math.PI / 180; // 6 degrees per frame
-
 const DOMINATION_THRESHOLD = 0.8;
-const BIGGER_BALL_MULT = 2.0;
-const BIGGER_RACKET_MULT = 1.6;
-const FASTER_BALL_MULT = 1.4;
+const BIGGER_BALL_MULT = 1.0;
+const BIGGER_RACKET_MULT = 2;
+const FASTER_BALL_MULT = 0.5;
+
 const POWERUP_VISUAL_RADIUS = SQUARE_SIZE;
 const POWERUP_RESPAWN_QUICK = 10; // seconds after collection
 
@@ -746,9 +745,12 @@ function updateBalls() {
   for (const ball of balls) {
     const effect = activeEffects[ball.team];
     const bigStacks = effectStacks(ball.team, 'BIGGER_BALL', now);
-    ball.radius = bigStacks > 0 ? BASE_BALL_RADIUS * Math.pow(BIGGER_BALL_MULT, bigStacks) : BASE_BALL_RADIUS;
+    //ball.radius = bigStacks > 0 ? BASE_BALL_RADIUS * Math.pow(BIGGER_BALL_MULT, bigStacks) : BASE_BALL_RADIUS;
+    ball.radius = BASE_BALL_RADIUS * (1 + bigStacks * BIGGER_BALL_MULT);
+
     const fastStacks = effectStacks(ball.team, 'FASTER_BALL', now);
-    const speedMult = fastStacks > 0 ? Math.pow(FASTER_BALL_MULT, fastStacks) : 1;
+    //const speedMult = fastStacks > 0 ? Math.pow(FASTER_BALL_MULT, fastStacks) : 1;
+    const speedMult = 1 + (fastStacks * FASTER_BALL_MULT);
 
     const totalSpeed = Math.sqrt(ball.dx * ball.dx + ball.dy * ball.dy) * speedMult;
     const subSteps = Math.max(2, Math.ceil(totalSpeed / (ball.radius * 0.5))); // higher density for trails
@@ -986,10 +988,10 @@ const POWERUP_HUD = { BIGGER_BALL: '\u25C9', EXTRA_BALL: '\u271A', BIGGER_RACKET
 const POWERUP_NAMES = { BIGGER_BALL: 'Big Ball', EXTRA_BALL: 'Extra Ball', BIGGER_RACKET: 'Big Racket', FASTER_BALL: 'Fast Ball', SHRINK_RACKET: 'Shrink Foe' };
 const MIN_RACKET_HEIGHT = SQUARE_SIZE * 3; // minimum racket height (3 blocks)
 const POWERUP_LIMITS = {
-  BIGGER_BALL: 3,
+  BIGGER_BALL: 5,
   EXTRA_BALL: 8,
-  BIGGER_RACKET: 2,
-  FASTER_BALL: 3,
+  BIGGER_RACKET: 3,
+  FASTER_BALL: 4,
   SHRINK_RACKET: 3,
 };
 
@@ -1037,8 +1039,10 @@ function updatePowerups() {
   for (const [pl, team] of [[player1, 'day'], [player2, 'night']]) {
     const growStacks = effectStacks(team, 'BIGGER_RACKET', now);
     const shrinkStacks = effectStacks(team, 'SHRINK_RACKET', now);
-    let desiredH = growStacks > 0 ? BASE_PLAYER_HEIGHT * Math.pow(BIGGER_RACKET_MULT, growStacks) : BASE_PLAYER_HEIGHT;
-    desiredH -= shrinkStacks * SQUARE_SIZE * 2; // 2 blocks per shrink stack
+    //let desiredH = growStacks > 0 ? BASE_PLAYER_HEIGHT * Math.pow(BIGGER_RACKET_MULT, growStacks) : BASE_PLAYER_HEIGHT;
+    let desiredH = BASE_PLAYER_HEIGHT + (growStacks * SQUARE_SIZE * BIGGER_RACKET_MULT) - (shrinkStacks * SQUARE_SIZE * BIGGER_RACKET_MULT);
+
+
     desiredH = Math.max(MIN_RACKET_HEIGHT, desiredH);
     const canFit = (h) => {
       if (!isWithinBounds(pl.cx, pl.cy, pl.width, h, pl.angle)) return false;
