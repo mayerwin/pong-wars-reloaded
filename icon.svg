@@ -4,6 +4,6 @@
   <rect x="264" y="48" width="200" height="416" rx="8" fill="#114C5A"/>
   <circle cx="200" cy="200" r="28" fill="#114C5A"/>
   <circle cx="312" cy="312" r="28" fill="#D9E8E3"/>
-  <rect x="72" y="200" width="12" height="80" rx="6" fill="#B73E86"/>
-  <rect x="428" y="232" width="12" height="80" rx="6" fill="#B73E86"/>
+  <rect x="72" y="200" width="12" height="80" rx="6" fill="#00D2D3"/>
+  <rect x="428" y="232" width="12" height="80" rx="6" fill="#00D2D3"/>
 </svg>
