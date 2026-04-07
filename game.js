@@ -253,9 +253,9 @@ let particles = [], ballTrails = [];
 let screenShake = { intensity: 0 };
 let dayScore = 0, nightScore = 0;
 let lastSpawn = { day: 0, night: 0 };
-let aiState = { p1: { targetX: 0, targetY: 0, reactionCounter: 0 }, p2: { targetX: 0, targetY: 0, reactionCounter: 0 } };
+let aiState = { p1: { targetX: 0, targetY: 0, reactionCounter: 0, bestDistAtStuckStart: Infinity }, p2: { targetX: 0, targetY: 0, reactionCounter: 0, bestDistAtStuckStart: Infinity } };
 const TELEPORT_MAX = 3;
-const TELEPORT_HOLD_FRAMES = 180; // 3 seconds at 60fps
+const TELEPORT_HOLD_FRAMES = 120; // 2 seconds at 60fps
 let teleportState = {
   p1: { holdFrames: 0, remaining: TELEPORT_MAX },
   p2: { holdFrames: 0, remaining: TELEPORT_MAX },
@@ -495,6 +495,20 @@ function updatePlayers() {
   player2.vx = player2.cx - player2.prevCx; player2.vy = player2.cy - player2.prevCy;
 }
 
+function chargeTeleport(player, pKey, charging) {
+  const ts = teleportState[pKey];
+  if (charging && ts.remaining > 0) {
+    ts.holdFrames++;
+    if (ts.holdFrames >= TELEPORT_HOLD_FRAMES) {
+      teleportBallToRacket(player);
+      ts.remaining--;
+      ts.holdFrames = 0;
+    }
+  } else {
+    ts.holdFrames = 0;
+  }
+}
+
 function updatePlayerInput(player, pKey, binds) {
   const rL = keys[binds.rotL];
   const rR = keys[binds.rotR];
@@ -507,16 +521,6 @@ function updatePlayerInput(player, pKey, binds) {
   if (rotLeft && rotRight) {
     resetRotation(player);
     rotHoldFrames[holdKeyL] = 0; rotHoldFrames[holdKeyR] = 0;
-    // Ball teleport: hold both rotate buttons for 3 seconds
-    const ts = teleportState[pKey];
-    if (ts.remaining > 0) {
-      ts.holdFrames++;
-      if (ts.holdFrames >= TELEPORT_HOLD_FRAMES) {
-        teleportBallToRacket(player);
-        ts.remaining--;
-        ts.holdFrames = 0;
-      }
-    }
   } else if (rotLeft) {
     rotHoldFrames[holdKeyL]++;
     if (rotHoldFrames[holdKeyL] === 1 || (rotHoldFrames[holdKeyL] > ROT_HOLD_THRESHOLD && rotHoldFrames[holdKeyL] % 6 === 0)) {
@@ -524,7 +528,6 @@ function updatePlayerInput(player, pKey, binds) {
       snapRotation(player, target);
     }
     rotHoldFrames[holdKeyR] = 0;
-    teleportState[pKey].holdFrames = 0;
   } else if (rotRight) {
     rotHoldFrames[holdKeyR]++;
     if (rotHoldFrames[holdKeyR] === 1 || (rotHoldFrames[holdKeyR] > ROT_HOLD_THRESHOLD && rotHoldFrames[holdKeyR] % 6 === 0)) {
@@ -532,11 +535,10 @@ function updatePlayerInput(player, pKey, binds) {
       snapRotation(player, target);
     }
     rotHoldFrames[holdKeyL] = 0;
-    teleportState[pKey].holdFrames = 0;
   } else {
     rotHoldFrames[holdKeyL] = 0; rotHoldFrames[holdKeyR] = 0;
-    teleportState[pKey].holdFrames = 0;
   }
+  chargeTeleport(player, pKey, rotLeft && rotRight);
 
   const ji = joystickInput[pKey];
   if (ji) {
@@ -724,6 +726,23 @@ function updateAI(player, diffKey) {
   const speed = player.speed * cfg.speedMult;
   movePlayer(player, player.cx + Math.max(-speed, Math.min(speed, targetX - player.cx)),
     player.cy + Math.max(-speed, Math.min(speed, targetY - player.cy)));
+
+  // AI teleport: decide whether to charge based on progress toward ball
+  let wantsTeleport = false;
+  const ai = aiState[playerKey];
+  if (bestBall && teleportState[playerKey].remaining > 0) {
+    const distToBall = Math.hypot(bestBall.x - player.cx, bestBall.y - player.cy);
+    // No progress if distance hasn't improved meaningfully since charge started
+    const noProgress = distToBall > CANVAS_SIZE * 0.15 &&
+      distToBall >= ai.bestDistAtStuckStart - SQUARE_SIZE;
+    if (noProgress) {
+      wantsTeleport = true;
+    } else {
+      ai.bestDistAtStuckStart = distToBall;
+    }
+  }
+  if (!wantsTeleport) ai.bestDistAtStuckStart = Infinity;
+  chargeTeleport(player, playerKey, wantsTeleport);
 }
 
 function predictBallY(ball, targetX) {
@@ -846,8 +865,8 @@ function updateBalls() {
         if (relV > 0) { // approaching
           a.dx -= relV * nx; a.dy -= relV * ny;
           b.dx += relV * nx; b.dy += relV * ny;
-          a.skipSquareCheck = 4;
-          b.skipSquareCheck = 4;
+          a.skipSquareCheck = 2;
+          b.skipSquareCheck = 2;
         }
       }
     }
@@ -856,16 +875,26 @@ function updateBalls() {
 
 function checkSquareCollision(ball) {
   let painted = false, bouncedX = false, bouncedY = false;
-  // More check points for bigger balls to avoid gaps
-  const angleStep = ball.radius > BASE_BALL_RADIUS ? Math.PI / 8 : Math.PI / 4;
   const opponent = ball.team === 'day' ? player2 : player1;
-  for (let angle = 0; angle < Math.PI * 2; angle += angleStep) {
-    const checkX = ball.x + Math.cos(angle) * ball.radius;
-    const checkY = ball.y + Math.sin(angle) * ball.radius;
-    const i = Math.floor(checkX / SQUARE_SIZE);
-    const j = Math.floor(checkY / SQUARE_SIZE);
+  const r = ball.radius;
 
-    if (i >= 0 && i < NUM_SQUARES && j >= 0 && j < NUM_SQUARES && squares[i][j] !== ball.paintColor) {
+  // Check ALL grid squares overlapping the ball's bounding box
+  const iMin = Math.max(0, Math.floor((ball.x - r) / SQUARE_SIZE));
+  const iMax = Math.min(NUM_SQUARES - 1, Math.floor((ball.x + r) / SQUARE_SIZE));
+  const jMin = Math.max(0, Math.floor((ball.y - r) / SQUARE_SIZE));
+  const jMax = Math.min(NUM_SQUARES - 1, Math.floor((ball.y + r) / SQUARE_SIZE));
+
+  for (let i = iMin; i <= iMax; i++) {
+    for (let j = jMin; j <= jMax; j++) {
+      if (squares[i][j] === ball.paintColor) continue;
+
+      // Circle-vs-AABB overlap test
+      const sqL = i * SQUARE_SIZE, sqT = j * SQUARE_SIZE;
+      const closestX = Math.max(sqL, Math.min(sqL + SQUARE_SIZE, ball.x));
+      const closestY = Math.max(sqT, Math.min(sqT + SQUARE_SIZE, ball.y));
+      const dx = ball.x - closestX, dy = ball.y - closestY;
+      if (dx * dx + dy * dy > r * r) continue;
+
       // Only bounce+paint if not protected by opponent racket
       if (rotatedRectOverlapsSquare(opponent, i, j)) continue;
       const oldColor = squares[i][j];
@@ -873,7 +902,10 @@ function checkSquareCollision(ball) {
       if (oldColor === DAY_COLOR) { dayScore--; nightScore++; }
       else { dayScore++; nightScore--; }
       painted = true;
-      if (Math.abs(Math.cos(angle)) > Math.abs(Math.sin(angle))) {
+
+      // Bounce direction: use vector from ball center to square center
+      const scx = sqL + SQUARE_SIZE / 2, scy = sqT + SQUARE_SIZE / 2;
+      if (Math.abs(ball.x - scx) > Math.abs(ball.y - scy)) {
         if (!bouncedX) { ball.dx = -ball.dx; bouncedX = true; }
       } else {
         if (!bouncedY) { ball.dy = -ball.dy; bouncedY = true; }
@@ -947,7 +979,7 @@ function checkRacketCollision(ball, player) {
     const dynamicMax = MAX_SPEED + boostExtra;
     if (spd > dynamicMax) { ball.dx = (ball.dx / spd) * dynamicMax; ball.dy = (ball.dy / spd) * dynamicMax; }
 
-    ball.skipSquareCheck = 4; // avoid immediate re-bounce into squares
+    ball.skipSquareCheck = 2; // brief skip to avoid immediate re-bounce into squares behind racket
     audio.playRacketHit();
     if (settings.effectsEnabled) {
       if (settings.screenShake) screenShake.intensity = Math.max(screenShake.intensity, 3.5);
@@ -1168,7 +1200,7 @@ function updatePowerupHUD() {
       const charging = ts.holdFrames > 0;
       const pct = charging ? Math.round(ts.holdFrames / TELEPORT_HOLD_FRAMES * 100) : 0;
       const style = charging ? 'opacity:1' : 'opacity:0.45';
-      html += `<span class="powerup-icon teleport-icon" title="Teleport (both rotate 3s) x${ts.remaining}${charging ? ' — ' + pct + '%' : ''}" style="${style};cursor:pointer">\u21CC${ts.remaining}</span>`;
+      html += `<span class="powerup-icon teleport-icon" title="Teleport (both rotate 2s) x${ts.remaining}${charging ? ' — ' + pct + '%' : ''}" style="${style};cursor:pointer">\u21CC${ts.remaining}</span>`;
     }
     el.innerHTML = html;
     // Mirror to side HUD
@@ -2103,8 +2135,8 @@ function formatTime(s) {
 document.addEventListener('click', e => {
   if (e.target.closest('.teleport-icon')) {
     const msg = touchMode
-      ? 'Hold both rotate buttons for 3 seconds to teleport your ball to your racket.'
-      : `Hold both rotate keys (${keyDisplayName(keyBindings.p1.rotL)}+${keyDisplayName(keyBindings.p1.rotR)} or ${keyDisplayName(keyBindings.p2.rotL)}+${keyDisplayName(keyBindings.p2.rotR)}) for 3 seconds to teleport your ball to your racket.`;
+      ? 'Hold both rotate buttons for 2 seconds to teleport your ball to your racket.'
+      : `Hold both rotate keys (${keyDisplayName(keyBindings.p1.rotL)}+${keyDisplayName(keyBindings.p1.rotR)} or ${keyDisplayName(keyBindings.p2.rotL)}+${keyDisplayName(keyBindings.p2.rotR)}) for 2 seconds to teleport your ball to your racket.`;
     alert(msg);
   }
 });
@@ -2170,7 +2202,7 @@ function startGame() {
   dayScore = TOTAL_SQUARES / 2; nightScore = TOTAL_SQUARES / 2;
   lastSpawn = { day: 0, night: 0 };
   mirroredSeq = []; mirroredIdx = { day: 0, night: 0 };
-  aiState = { p1: { targetX: player1.cx, targetY: player1.cy, reactionCounter: 0 }, p2: { targetX: player2.cx, targetY: player2.cy, reactionCounter: 0 } };
+  aiState = { p1: { targetX: player1.cx, targetY: player1.cy, reactionCounter: 0, bestDistAtStuckStart: Infinity }, p2: { targetX: player2.cx, targetY: player2.cy, reactionCounter: 0, bestDistAtStuckStart: Infinity } };
 
   game.state = 'playing'; game.tickCount = 0; game.winner = null;
   game.timeRemaining = settings.winCondition === 'domination' ? Infinity : settings.duration;

@@ -49,7 +49,7 @@ All key bindings are fully customizable via Settings > Configure Keys.
 
 ### Ball Teleport (Emergency Rescue)
 
-Hold **both left + right movement keys** for 3 seconds to teleport your nearest ball to your racket. This clears a small area of enemy territory around the spawn point and resets the ball to normal size. Each player gets **3 teleports per game** — shown as dimmed icons in the HUD (they brighten and show charging progress while held).
+Hold **both left + right movement keys** for 2 seconds to teleport your nearest ball to your racket. This clears a small area of enemy territory around the spawn point and resets the ball to normal size. Each player gets **3 teleports per game** — shown as dimmed icons in the HUD (they brighten and show charging progress while held).
 
 ### Power Shot
 
