@@ -2204,9 +2204,11 @@ if (touchMode) initJoysticks();
 // Fullscreen button (always wire up if it exists)
 const fsBtn = document.getElementById('fullscreen-btn');
 if (fsBtn) {
+  const fsSvgEnter = '<svg viewBox="0 0 24 24" width="1.2em" height="1.2em" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
+  const fsSvgExit = '<svg viewBox="0 0 24 24" width="1.2em" height="1.2em" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
   function updateFsIcon() {
     const isFs = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement;
-    fsBtn.textContent = isFs ? '\u2716' : '\u26F6';
+    fsBtn.innerHTML = isFs ? fsSvgExit : fsSvgEnter;
   }
   fsBtn.addEventListener('click', () => {
     const isFs = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement;
