@@ -12,7 +12,7 @@ https://github.com/vnglst/pong-wars/assets/3457693/4eae12fa-bdc1-49ee-8b39-c94de
 
 Open `index.html` in any modern browser. From the main menu you can choose:
 
-- **2 Player** or **vs AI** mode (with difficulty: Easy / Medium / Hard / Hardest)
+- **2 Player**, **vs AI**, or **AI vs AI** mode (with difficulty: Easy / Medium / Hard / Hardest per AI)
 - **Win condition**: Combined (time + domination), Domination only, or Timed only
 - **Duration**: configurable game length (click the timer label during setup for arbitrary values)
 
@@ -20,7 +20,7 @@ Open `index.html` in any modern browser. From the main menu you can choose:
 
 Each side starts with half the grid. Balls bounce around and paint squares in their team's color. Players use rackets to deflect balls and control territory. The game ends by:
 
-- **Domination**: a team controls 75% of the grid
+- **Domination**: a team controls 80% of the grid
 - **Time**: when the clock runs out, the team with more territory wins
 - **Combined**: whichever happens first
 
@@ -34,6 +34,8 @@ Each side starts with half the grid. Balls bounce around and paint squares in th
 | Move Right     | F                 | Arrow Right         |
 | Rotate Left    | A                 | , (comma)           |
 | Rotate Right   | Q                 | . (period)          |
+
+**Pause**: press **ESC** or the pause button in the HUD. **Fullscreen**: click the fullscreen button in the HUD.
 
 All key bindings are fully customizable via Settings > Configure Keys.
 
@@ -59,13 +61,13 @@ Powerups spawn as **stars** (Night territory) or **suns** (Day territory) every 
 
 | Powerup        | Icon | Effect                                              |
 |----------------|------|-----------------------------------------------------|
-| Big Ball       | ◉    | Doubles ball radius (cumulative, max 3 stacks)       |
+| Big Ball       | ◉    | Increases ball radius by +100% base per stack (max 5 stacks) |
 | Extra Ball     | ✚    | Spawns an additional ball for your team (max 8)      |
-| Big Racket     | ⇕    | Grows your racket by 60% (cumulative, max 3 stacks) |
-| Fast Ball      | »    | Increases ball speed (cumulative, max 3 stacks)      |
-| Shrink Foe     | ⤓    | Shrinks opponent's racket by 2 blocks (max 3 stacks, min 3 blocks) |
+| Big Racket     | ⇕    | Grows your racket by 2 blocks per stack (max 3 stacks) |
+| Fast Ball      | »    | Increases ball speed by +50% base per stack (max 4 stacks) |
+| Shrink Foe     | ⤓    | Shrinks opponent's racket by 2 blocks per stack (max 3 stacks, min 3 blocks) |
 
-- Effects stack cumulatively (up to 3 per type). Collecting a 4th replaces the oldest, extending its duration.
+- Effects stack cumulatively (up to max per type). Collecting beyond the cap replaces the oldest, extending its duration.
 - Extra balls cap at 8 per team; additional pickups extend the oldest ball's duration.
 - Active powerups are shown in the HUD next to each team's score, with stack counts.
 
@@ -75,7 +77,7 @@ Powerups spawn as **stars** (Night territory) or **suns** (Day territory) every 
 - **Timer**: remaining game time (click to enter arbitrary duration)
 - **Powerup icons**: active effects with stack counts
 - **Teleport charges**: shown as dimmed ⇌ icons with remaining count
-- **Progress bar** (below HUD): visual representation of domination progress, scaled so 100% = reaching the 75% domination threshold
+- **Progress bar** (below HUD): visual representation of domination progress, scaled so 100% = reaching the 80% domination threshold
 
 ## Settings
 
@@ -87,6 +89,7 @@ Access settings via the **gear icon** (⚙) during gameplay, or from the main me
 
 ### Visual Effects
 - **Master toggle**: enables/disables all visual effects
+- **Color Theme**: choose between Coral, Sunset, or Cyber palettes
 - **Screen Shake**: camera shake on ball impacts
 - **Racket Outline**: colored outline around rackets
 - **Grid Lines**: subtle grid overlay (off by default)
@@ -96,6 +99,7 @@ Access settings via the **gear icon** (⚙) during gameplay, or from the main me
 ### Powerups
 - **Frequency**: how often powerups spawn (5-60 seconds)
 - **Duration**: how long powerup effects last (10-120 seconds)
+- **Mirrored Types**: both teams spawn the same powerup sequence (off by default)
 
 ### Gameplay
 - **Free Movement**: allows rackets to move freely across enemy territory and collect powerups from either side (off by default — when off, rackets are blocked by enemy squares)
