@@ -224,6 +224,16 @@ body.is-small-screen #made {
   flex-shrink: 0;
 }
 
+/* Semantic Player Control Visibility: Hide panels when controlled by AI */
+body.p1-ai #mobile-panel-left,
+body.p1-ai #mobile-panel-bottom {
+  display: none !important;
+}
+
+body.p2-ai #mobile-panel-right {
+  display: none !important;
+}
+
 /* Standard control pad: buttons col 1 (left), joystick col 2 (right) — rotated per orientation */
 body.is-mobile.game-active .mobile-panel {
   display: grid;
@@ -286,7 +296,7 @@ body.is-mobile.has-fine-pointer.game-active.ai-mode #progression-bar {
   display: flex !important;
 }
 
-body.is-mobile.has-fine-pointer.game-active.ai-mode #mobile-panel-bottom {
+body.is-mobile.has-fine-pointer.game-active.ai-mode:not(.p1-ai) #mobile-panel-bottom {
   display: grid !important;
   position: fixed;
   bottom: 72px;
@@ -326,9 +336,6 @@ body.is-mobile.has-fine-pointer.game-active.ai-mode #pongCanvas {
 }
 
 /* Base AI Mode hiding: ensure right panel is always hidden in solo matches */
-body.is-mobile.game-active.ai-mode #mobile-panel-right {
-  display: none;
-}
 
 .joystick-area {
   width: 56px;
@@ -394,8 +401,8 @@ body.is-mobile.game-active.ai-mode #mobile-panel-right {
   border: 1px solid rgba(var(--ui-accent-rgb), 0.4);
   color: #D9E8E3;
   font-size: 18px;
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   border-radius: 6px;
   cursor: pointer;
   align-items: center;
@@ -411,14 +418,14 @@ body.is-mobile.game-active #fullscreen-btn {
   display: none;
   position: fixed;
   top: 6px;
-  left: 46px;
+  left: 40px;
   z-index: 20;
   background: rgba(23, 43, 54, 0.7);
   border: 1px solid rgba(var(--ui-accent-rgb), 0.4);
   color: #D9E8E3;
   font-size: 18px;
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   border-radius: 6px;
   cursor: pointer;
   align-items: center;
@@ -521,7 +528,7 @@ body.is-mobile:not(.has-fine-pointer).game-active #made {
     display: none;
   }
 
-  body.is-mobile:not(.has-fine-pointer).game-active.ai-mode #mobile-panel-bottom {
+  body.is-mobile:not(.has-fine-pointer).game-active.ai-mode:not(.p1-ai) #mobile-panel-bottom {
     display: grid;
     position: fixed;
     bottom: 72px;
@@ -550,10 +557,7 @@ body.is-mobile:not(.has-fine-pointer).game-active #made {
     gap: 14px 80px;
   }
 
-  /* In landscape AI mode, explicitly hide the right panel */
-  body.is-mobile.game-active.ai-mode #mobile-panel-right {
-    display: none !important;
-  }
+  /* Side panel hiding handled by p2-ai class */
 
   /* Control sizes for all premium panels (both orientations) */
   body.is-mobile.game-active #mobile-panel-left .joystick-area,
@@ -562,12 +566,14 @@ body.is-mobile:not(.has-fine-pointer).game-active #made {
     width: 84px;
     height: 84px;
   }
+
   body.is-mobile.game-active #mobile-panel-left .joystick-knob,
   body.is-mobile.game-active #mobile-panel-right .joystick-knob,
   body.is-mobile.game-active.ai-mode #mobile-panel-bottom .joystick-knob {
     width: 36px;
     height: 36px;
   }
+
   body.is-mobile.game-active #mobile-panel-left .rot-btn,
   body.is-mobile.game-active #mobile-panel-right .rot-btn,
   body.is-mobile.game-active.ai-mode #mobile-panel-bottom .rot-btn {
@@ -796,7 +802,7 @@ body.is-mobile:not(.has-fine-pointer).game-active #made {
   }
 
   body.is-mobile:not(.has-fine-pointer).game-active #pause-btn {
-    left: max(46px, calc(50dvw - 50dvh - 66px));
+    left: max(46px, calc(50dvw - 50dvh - 72px));
   }
 
   /* AI mode landscape — touch only */
@@ -905,10 +911,25 @@ body.is-mobile:not(.has-fine-pointer).game-active #made {
     padding-right: 5px;
   }
 
-  body.is-mobile.has-fine-pointer.game-active #side-hud-bar-left .side-score { grid-column: 1; grid-row: 1; }
-  body.is-mobile.has-fine-pointer.game-active #side-hud-bar-left .side-timer { grid-column: 1; grid-row: 2; }
-  body.is-mobile.has-fine-pointer.game-active #side-hud-bar-left .side-powerups { grid-column: 1; grid-row: 3; }
-  body.is-mobile.has-fine-pointer.game-active #side-hud-bar-left .side-prog-track { grid-column: 2; grid-row: 1 / 4; }
+  body.is-mobile.has-fine-pointer.game-active #side-hud-bar-left .side-score {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  body.is-mobile.has-fine-pointer.game-active #side-hud-bar-left .side-timer {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  body.is-mobile.has-fine-pointer.game-active #side-hud-bar-left .side-powerups {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  body.is-mobile.has-fine-pointer.game-active #side-hud-bar-left .side-prog-track {
+    grid-column: 2;
+    grid-row: 1 / 4;
+  }
 
   /* Right bar: [prog | text] */
   body.is-mobile.has-fine-pointer.game-active #side-hud-bar-right {
@@ -918,10 +939,25 @@ body.is-mobile:not(.has-fine-pointer).game-active #made {
     padding-left: 5px;
   }
 
-  body.is-mobile.has-fine-pointer.game-active #side-hud-bar-right .side-prog-track { grid-column: 1; grid-row: 1 / 4; }
-  body.is-mobile.has-fine-pointer.game-active #side-hud-bar-right .side-score { grid-column: 2; grid-row: 1; }
-  body.is-mobile.has-fine-pointer.game-active #side-hud-bar-right .side-timer { grid-column: 2; grid-row: 2; }
-  body.is-mobile.has-fine-pointer.game-active #side-hud-bar-right .side-powerups { grid-column: 2; grid-row: 3; }
+  body.is-mobile.has-fine-pointer.game-active #side-hud-bar-right .side-prog-track {
+    grid-column: 1;
+    grid-row: 1 / 4;
+  }
+
+  body.is-mobile.has-fine-pointer.game-active #side-hud-bar-right .side-score {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  body.is-mobile.has-fine-pointer.game-active #side-hud-bar-right .side-timer {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  body.is-mobile.has-fine-pointer.game-active #side-hud-bar-right .side-powerups {
+    grid-column: 2;
+    grid-row: 3;
+  }
 
   /* Text styling */
   body.is-mobile.has-fine-pointer.game-active .side-hud-bar .side-score {

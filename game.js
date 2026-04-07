@@ -2069,6 +2069,8 @@ function handleOptionChange(groupId, value) {
       const lbl2 = document.getElementById('ai2-difficulty-label');
       if (lbl2) lbl2.textContent = value === 'aivsai' ? 'Night AI Difficulty' : 'AI Difficulty';
 
+      document.body.classList.toggle('p1-ai', value === 'aivsai');
+      document.body.classList.toggle('p2-ai', value === 'ai' || value === 'aivsai');
       document.body.classList.toggle('ai-mode', value === 'ai' || value === 'aivsai');
       break;
     case 'difficulty-select': settings.ai1Difficulty = value; break;
@@ -2129,6 +2131,8 @@ function startGame() {
   document.getElementById('keybind-overlay').classList.add('hidden');
   document.getElementById('settings-overlay').classList.add('hidden');
   document.body.classList.add('game-active');
+  document.body.classList.toggle('p1-ai', settings.mode === 'aivsai');
+  document.body.classList.toggle('p2-ai', settings.mode !== '2p');
   document.body.classList.toggle('ai-mode', settings.mode !== '2p');
 
   // For 2P mode on mobile, attempt to force landscape to avoid overlapping controls
