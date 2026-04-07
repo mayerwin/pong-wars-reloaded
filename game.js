@@ -237,10 +237,10 @@ const audio = {
 
 // ==================== GAME STATE ====================
 const AI_CONFIG = {
-  easy: { speedMult: 0.38, reactionFrames: 18, jitter: 35, seeksPowerups: false, predicts: false, advanceMult: 0.2, puRadius: 0.25 },
-  medium: { speedMult: 0.62, reactionFrames: 10, jitter: 18, seeksPowerups: true, predicts: false, advanceMult: 0.4, puRadius: 0.35, puUrgencyThresh: 1.2 },
-  hard: { speedMult: 0.88, reactionFrames: 4, jitter: 8, seeksPowerups: true, predicts: true, advanceMult: 0.6, puRadius: 0.6, puUrgencyThresh: 1.45 },
-  hardest: { speedMult: 1.0, reactionFrames: 0, jitter: 0, seeksPowerups: true, predicts: true, advanceMult: 0.8, puRadius: Infinity, puUrgencyThresh: 1.75 },
+  easy:    { speedMult: 0.38, reactionFrames: 18, jitter: 35, seeksPowerups: false, predicts: false, traps: false },
+  medium:  { speedMult: 0.62, reactionFrames: 10, jitter: 18, seeksPowerups: true,  predicts: false, traps: false },
+  hard:    { speedMult: 0.88, reactionFrames: 4,  jitter: 8,  seeksPowerups: true,  predicts: true,  traps: true },
+  hardest: { speedMult: 1.0,  reactionFrames: 0,  jitter: 0,  seeksPowerups: true,  predicts: true,  traps: true },
 };
 
 let game = { state: 'menu', timeRemaining: 0, tickCount: 0, winner: null };
@@ -253,7 +253,7 @@ let particles = [], ballTrails = [];
 let screenShake = { intensity: 0 };
 let dayScore = 0, nightScore = 0;
 let lastSpawn = { day: 0, night: 0 };
-let aiState = { p1: { targetX: 0, targetY: 0, reactionCounter: 0, bestDistAtStuckStart: Infinity }, p2: { targetX: 0, targetY: 0, reactionCounter: 0, bestDistAtStuckStart: Infinity } };
+let aiState = { p1: { targetX: 0, targetY: 0, reactionCounter: 0, bestDistAtStuckStart: Infinity, stayTrapping: false }, p2: { targetX: 0, targetY: 0, reactionCounter: 0, bestDistAtStuckStart: Infinity, stayTrapping: false } };
 const TELEPORT_MAX = 3;
 const TELEPORT_HOLD_FRAMES = 120; // 2 seconds at 60fps
 let teleportState = {
@@ -675,85 +675,129 @@ function teleportBallToRacket(player) {
 function updateAI(player, diffKey) {
   const cfg = AI_CONFIG[settings[diffKey]] || AI_CONFIG.medium;
 
+  // Reset rotation to vertical
   if (player.angle > 0.01) rotatePlayer(player, -ROT_SNAP);
   else if (player.angle < -0.01) rotatePlayer(player, ROT_SNAP);
   else if (isValidRotatedPos(player, player.cx, player.cy, 0)) player.angle = 0;
 
   const playerKey = player.team === 'day' ? 'p1' : 'p2';
+  const ai = aiState[playerKey];
 
-  if (aiState[playerKey].reactionCounter > 0) {
-    aiState[playerKey].reactionCounter--;
+  // Reaction delay — keep moving toward cached target
+  if (ai.reactionCounter > 0) {
+    ai.reactionCounter--;
     const speed = player.speed * cfg.speedMult;
-    const dy = Math.max(-speed, Math.min(speed, aiState[playerKey].targetY - player.cy));
-    const dx = Math.max(-speed, Math.min(speed, aiState[playerKey].targetX - player.cx));
+    const dx = Math.max(-speed, Math.min(speed, ai.targetX - player.cx));
+    const dy = Math.max(-speed, Math.min(speed, ai.targetY - player.cy));
     movePlayer(player, player.cx + dx, player.cy + dy);
+    aiUpdateTeleport(player, playerKey, ai);
     return;
   }
-  aiState[playerKey].reactionCounter = cfg.reactionFrames;
+  ai.reactionCounter = cfg.reactionFrames;
 
-  let bestBall = null, bestUrgency = -Infinity;
-  for (const ball of balls) {
-    const urgency = player.team === 'day'
-      ? (ball.dx < 0 ? 1 + (CANVAS_SIZE - ball.x) / CANVAS_SIZE : (CANVAS_SIZE - ball.x) / CANVAS_SIZE * 0.3)
-      : (ball.dx > 0 ? 1 + ball.x / CANVAS_SIZE : ball.x / CANVAS_SIZE * 0.3);
-    if (urgency > bestUrgency) { bestUrgency = urgency; bestBall = ball; }
+  const isDay = player.team === 'day';
+  const enemyColor = isDay ? NIGHT_COLOR : DAY_COLOR;
+
+  // --- Gather info ---
+
+  // Nearest own-team ball
+  let ownBall = null, ownDist = Infinity;
+  for (const b of balls) {
+    if (b.team !== player.team) continue;
+    const d = Math.hypot(b.x - player.cx, b.y - player.cy);
+    if (d < ownDist) { ownDist = d; ownBall = b; }
   }
 
-  let targetX = player.cx, targetY = player.cy;
-
-  if (bestBall && bestUrgency > 0.3) {
-    targetY = cfg.predicts ? predictBallY(bestBall, player.cx) : bestBall.y;
-    targetX = player.team === 'day'
-      ? Math.max(40, Math.min(CANVAS_SIZE * 0.5 - 20, bestBall.x - 80))
-      : Math.max(CANVAS_SIZE * 0.5 + 20, Math.min(CANVAS_SIZE - 40, bestBall.x + 80));
-    targetY += (Math.random() - 0.5) * cfg.jitter;
-  } else {
-    const advanceTarget = player.team === 'day'
-      ? CANVAS_SIZE * (0.45 + cfg.advanceMult * 0.15)
-      : CANVAS_SIZE * (0.55 - cfg.advanceMult * 0.15);
-    targetX = Math.max(advanceTarget, player.team === 'day' ? player.cx + 10 : player.cx - 10);
-    targetX = player.team === 'day' ? Math.min(targetX, CANVAS_SIZE / 2 - 20) : Math.max(targetX, CANVAS_SIZE / 2 + 20);
-    targetY = CANVAS_SIZE / 2 + (Math.random() - 0.5) * 100;
-  }
-
+  // Nearest collectible powerup (on own-color squares)
+  let bestPU = null, bestPUDist = Infinity;
   if (cfg.seeksPowerups) {
-    let nearestPU = null, nearestDist = Infinity;
-    const enemyColor = player.team === 'day' ? NIGHT_COLOR : DAY_COLOR;
-
     for (const pu of powerups) {
-      if (squares[pu.gridX][pu.gridY] !== enemyColor) continue;
+      if (squares[pu.gridX][pu.gridY] === enemyColor) continue;
       const px = pu.gridX * SQUARE_SIZE + SQUARE_SIZE / 2;
       const py = pu.gridY * SQUARE_SIZE + SQUARE_SIZE / 2;
       const dist = Math.hypot(px - player.cx, py - player.cy);
-      if (dist < nearestDist && dist < CANVAS_SIZE * (cfg.puRadius || 0.35)) {
-        nearestDist = dist; nearestPU = pu;
-      }
-    }
-    const urgencyThresh = cfg.puUrgencyThresh || 0.6;
-    if (nearestPU && bestUrgency < urgencyThresh) {
-      targetX = nearestPU.gridX * SQUARE_SIZE + SQUARE_SIZE / 2;
-      targetY = nearestPU.gridY * SQUARE_SIZE + SQUARE_SIZE / 2;
+      if (dist < bestPUDist) { bestPUDist = dist; bestPU = pu; }
     }
   }
 
-  aiState[playerKey].targetX = targetX;
-  aiState[playerKey].targetY = targetY;
+  // Count enemy blocks in pocket (between racket and far edge) for trapping hysteresis
+  let trappedEnemy = 0;
+  if (cfg.traps && ownBall) {
+    const colStart = isDay ? Math.max(0, Math.floor(player.cx / SQUARE_SIZE)) : 0;
+    const colEnd = isDay ? NUM_SQUARES : Math.min(NUM_SQUARES, Math.ceil(player.cx / SQUARE_SIZE));
+    for (let i = colStart; i < colEnd; i++)
+      for (let j = 0; j < NUM_SQUARES; j++)
+        if (squares[i][j] === enemyColor) trappedEnemy++;
+  }
+
+  // Hysteresis: stay trapping if pocket has < 80 enemy blocks, leave when >= 100 or 0
+  if (trappedEnemy === 0 || trappedEnemy >= 100) ai.stayTrapping = false;
+  else if (trappedEnemy > 0 && trappedEnemy < 80) ai.stayTrapping = true;
+  // Between 80-100: keep current state (hysteresis band)
+
+  // --- Decide target ---
+  let targetX = player.cx, targetY = player.cy;
+
+  if (bestPU && !ai.stayTrapping) {
+    // Priority 1: Collect powerups (unless trapping productively)
+    targetX = bestPU.gridX * SQUARE_SIZE + SQUARE_SIZE / 2;
+    targetY = bestPU.gridY * SQUARE_SIZE + SQUARE_SIZE / 2;
+  } else if (cfg.traps && ownBall) {
+    // Priority 2: Trap own ball — position on own-territory side of ball
+    const gap = player.width / 2 + ownBall.radius + 4;
+    targetX = isDay ? ownBall.x - gap : ownBall.x + gap;
+    targetX = Math.max(player.width / 2 + 2, Math.min(CANVAS_SIZE - player.width / 2 - 2, targetX));
+    targetY = cfg.predicts ? predictBallY(ownBall, targetX) : ownBall.y;
+    targetY += (Math.random() - 0.5) * cfg.jitter;
+  } else {
+    // Priority 3: Block opponent balls (easy/medium or no own ball)
+    let bestBall = null, bestUrgency = -Infinity;
+    for (const ball of balls) {
+      if (ball.team === player.team) continue;
+      const urgency = isDay
+        ? (ball.dx < 0 ? 1 + (CANVAS_SIZE - ball.x) / CANVAS_SIZE : (CANVAS_SIZE - ball.x) / CANVAS_SIZE * 0.3)
+        : (ball.dx > 0 ? 1 + ball.x / CANVAS_SIZE : ball.x / CANVAS_SIZE * 0.3);
+      if (urgency > bestUrgency) { bestUrgency = urgency; bestBall = ball; }
+    }
+
+    if (bestBall && bestUrgency > 0.3) {
+      targetY = cfg.predicts ? predictBallY(bestBall, player.cx) : bestBall.y;
+      targetX = isDay
+        ? Math.max(40, Math.min(CANVAS_SIZE * 0.5 - 20, bestBall.x - 80))
+        : Math.max(CANVAS_SIZE * 0.5 + 20, Math.min(CANVAS_SIZE - 40, bestBall.x + 80));
+      targetY += (Math.random() - 0.5) * cfg.jitter;
+    } else {
+      // Advance toward enemy territory
+      targetX = isDay ? CANVAS_SIZE * 0.6 : CANVAS_SIZE * 0.4;
+      targetY = CANVAS_SIZE / 2 + (Math.random() - 0.5) * 100;
+    }
+  }
+
+  ai.targetX = targetX;
+  ai.targetY = targetY;
   const speed = player.speed * cfg.speedMult;
   movePlayer(player, player.cx + Math.max(-speed, Math.min(speed, targetX - player.cx)),
     player.cy + Math.max(-speed, Math.min(speed, targetY - player.cy)));
 
-  // AI teleport: decide whether to charge based on progress toward ball
+  aiUpdateTeleport(player, playerKey, ai);
+}
+
+function aiUpdateTeleport(player, playerKey, ai) {
+  // Teleport: charge if stuck and can't reach own nearest ball
   let wantsTeleport = false;
-  const ai = aiState[playerKey];
-  if (bestBall && teleportState[playerKey].remaining > 0) {
-    const distToBall = Math.hypot(bestBall.x - player.cx, bestBall.y - player.cy);
-    // No progress if distance hasn't improved meaningfully since charge started
-    const noProgress = distToBall > CANVAS_SIZE * 0.15 &&
-      distToBall >= ai.bestDistAtStuckStart - SQUARE_SIZE;
+  let nearestOwnBall = null, nearestOwnDist = Infinity;
+  for (const b of balls) {
+    if (b.team !== player.team) continue;
+    const d = Math.hypot(b.x - player.cx, b.y - player.cy);
+    if (d < nearestOwnDist) { nearestOwnDist = d; nearestOwnBall = b; }
+  }
+  if (nearestOwnBall && teleportState[playerKey].remaining > 0) {
+    const noProgress = nearestOwnDist > CANVAS_SIZE * 0.15 &&
+      nearestOwnDist >= ai.bestDistAtStuckStart - SQUARE_SIZE;
     if (noProgress) {
       wantsTeleport = true;
     } else {
-      ai.bestDistAtStuckStart = distToBall;
+      ai.bestDistAtStuckStart = nearestOwnDist;
     }
   }
   if (!wantsTeleport) ai.bestDistAtStuckStart = Infinity;
@@ -2212,7 +2256,7 @@ function startGame() {
   dayScore = TOTAL_SQUARES / 2; nightScore = TOTAL_SQUARES / 2;
   lastSpawn = { day: 0, night: 0 };
   mirroredSeq = []; mirroredIdx = { day: 0, night: 0 };
-  aiState = { p1: { targetX: player1.cx, targetY: player1.cy, reactionCounter: 0, bestDistAtStuckStart: Infinity }, p2: { targetX: player2.cx, targetY: player2.cy, reactionCounter: 0, bestDistAtStuckStart: Infinity } };
+  aiState = { p1: { targetX: player1.cx, targetY: player1.cy, reactionCounter: 0, bestDistAtStuckStart: Infinity, stayTrapping: false }, p2: { targetX: player2.cx, targetY: player2.cy, reactionCounter: 0, bestDistAtStuckStart: Infinity, stayTrapping: false } };
 
   game.state = 'playing'; game.tickCount = 0; game.winner = null;
   game.timeRemaining = settings.winCondition === 'domination' ? Infinity : settings.duration;
