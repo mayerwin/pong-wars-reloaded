@@ -385,17 +385,38 @@ function rescuePlayer(player) {
   }
 }
 
+function wouldOverlapBall(player, cx, cy) {
+  const cos = Math.cos(-player.angle), sin = Math.sin(-player.angle);
+  const hw = player.width / 2, hh = player.height / 2;
+  for (const ball of balls) {
+    const dx = ball.x - cx, dy = ball.y - cy;
+    const lx = dx * cos - dy * sin, ly = dx * sin + dy * cos;
+    // Ball center inside racket?
+    if (Math.abs(lx) < hw && Math.abs(ly) < hh) return true;
+    // Ball edge overlapping racket?
+    const clX = Math.max(-hw, Math.min(hw, lx));
+    const clY = Math.max(-hh, Math.min(hh, ly));
+    const ddx = lx - clX, ddy = ly - clY;
+    if (ddx * ddx + ddy * ddy < ball.radius * ball.radius) return true;
+  }
+  return false;
+}
+
+function canMoveTo(player, cx, cy) {
+  return isValidRotatedPos(player, cx, cy, player.angle) && !wouldOverlapBall(player, cx, cy);
+}
+
 function movePlayer(player, targetCx, targetCy) {
   // Try full distance first (fast path), fall back to per-pixel on collision
   const fullDx = Math.round(targetCx - player.cx);
   if (fullDx !== 0) {
-    if (isValidRotatedPos(player, player.cx + fullDx, player.cy, player.angle)) {
+    if (canMoveTo(player, player.cx + fullDx, player.cy)) {
       player.cx += fullDx;
     } else {
       const dx = Math.sign(fullDx);
       const steps = Math.min(Math.abs(fullDx), player.speed);
       for (let s = 0; s < steps; s++) {
-        if (isValidRotatedPos(player, player.cx + dx, player.cy, player.angle)) {
+        if (canMoveTo(player, player.cx + dx, player.cy)) {
           player.cx += dx;
         } else break;
       }
@@ -403,13 +424,13 @@ function movePlayer(player, targetCx, targetCy) {
   }
   const fullDy = Math.round(targetCy - player.cy);
   if (fullDy !== 0) {
-    if (isValidRotatedPos(player, player.cx, player.cy + fullDy, player.angle)) {
+    if (canMoveTo(player, player.cx, player.cy + fullDy)) {
       player.cy += fullDy;
     } else {
       const dy = Math.sign(fullDy);
       const steps = Math.min(Math.abs(fullDy), player.speed);
       for (let s = 0; s < steps; s++) {
-        if (isValidRotatedPos(player, player.cx, player.cy + dy, player.angle)) {
+        if (canMoveTo(player, player.cx, player.cy + dy)) {
           player.cy += dy;
         } else break;
       }
@@ -560,13 +581,20 @@ function pushBallsFromRacket(player) {
   for (const ball of balls) pushBallOutOfRacket(ball, player);
 }
 
+function clampBallToBounds(ball) {
+  ball.x = Math.max(ball.radius, Math.min(CANVAS_SIZE - ball.radius, ball.x));
+  ball.y = Math.max(ball.radius, Math.min(CANVAS_SIZE - ball.radius, ball.y));
+}
+
 function pushBallOutOfRacket(ball, player) {
   const dx = ball.x - player.cx, dy = ball.y - player.cy;
   const c = Math.cos(-player.angle), s = Math.sin(-player.angle);
   const lx = dx * c - dy * s, ly = dx * s + dy * c;
   const hw = player.width / 2, hh = player.height / 2;
+  const c2 = Math.cos(player.angle), s2 = Math.sin(player.angle);
 
-  // Is ball center inside the racket?
+  let wnx, wny;
+
   if (Math.abs(lx) >= hw || Math.abs(ly) >= hh) {
     // Center outside — check edge overlap
     const clX = Math.max(-hw, Math.min(hw, lx));
@@ -574,38 +602,25 @@ function pushBallOutOfRacket(ball, player) {
     const ddx = lx - clX, ddy = ly - clY;
     const distSq = ddx * ddx + ddy * ddy;
     if (distSq >= ball.radius * ball.radius || distSq < 0.01) return;
-    // Edge overlap — push out along distance vector
     const dist = Math.sqrt(distSq);
     const nlx = ddx / dist, nly = ddy / dist;
-    const c2 = Math.cos(player.angle), s2 = Math.sin(player.angle);
-    const wnx = nlx * c2 - nly * s2, wny = nlx * s2 + nly * c2;
+    wnx = nlx * c2 - nly * s2; wny = nlx * s2 + nly * c2;
     const overlap = ball.radius - dist + 1;
-    ball.x += wnx * overlap;
-    ball.y += wny * overlap;
-    const vDot = ball.dx * wnx + ball.dy * wny;
-    if (vDot < 0) { ball.dx -= 2 * vDot * wnx; ball.dy -= 2 * vDot * wny; }
-    return;
+    ball.x += wnx * overlap; ball.y += wny * overlap;
+  } else {
+    // Center inside racket — push out the nearest same-side edge
+    const side = lx >= 0 ? 1 : -1;
+    const edgeDist = side > 0 ? hw - lx : hw + lx;
+    const pushDist = edgeDist + ball.radius + 1;
+    wnx = side * c2; wny = side * s2;
+    ball.x += wnx * pushDist; ball.y += wny * pushDist;
+    ball.skipSquareCheck = 2;
+    audio.playRacketHit();
   }
 
-  // Center is INSIDE the racket — find nearest edge and push out
-  const dists = [
-    { d: hw - lx, nlx: 1, nly: 0 },
-    { d: hw + lx, nlx: -1, nly: 0 },
-    { d: hh - ly, nlx: 0, nly: 1 },
-    { d: hh + ly, nlx: 0, nly: -1 },
-  ];
-  dists.sort((a, b) => a.d - b.d);
-  const best = dists[0];
-  const pushDist = best.d + ball.radius + 1;
-  const c2 = Math.cos(player.angle), s2 = Math.sin(player.angle);
-  const wnx = best.nlx * c2 - best.nly * s2;
-  const wny = best.nlx * s2 + best.nly * c2;
-  ball.x += wnx * pushDist;
-  ball.y += wny * pushDist;
+  clampBallToBounds(ball);
   const vDot = ball.dx * wnx + ball.dy * wny;
   if (vDot < 0) { ball.dx -= 2 * vDot * wnx; ball.dy -= 2 * vDot * wny; }
-  ball.skipSquareCheck = 4;
-  audio.playRacketHit();
 }
 
 function teleportBallToRacket(player) {
@@ -932,19 +947,14 @@ function checkRacketCollision(ball, player) {
   if (distSq < ball.radius * ball.radius) {
     let nx, ny;
     if (distSq < 0.01) {
-      // Ball center inside racket — find nearest edge
-      const edgeDists = [
-        { d: hw - lx, nlx: 1, nly: 0 }, { d: hw + lx, nlx: -1, nly: 0 },
-        { d: hh - ly, nlx: 0, nly: 1 }, { d: hh + ly, nlx: 0, nly: -1 },
-      ];
-      edgeDists.sort((a, b) => a.d - b.d);
-      const best = edgeDists[0];
+      // Ball center inside racket — push out the nearest same-side edge
       const c2 = Math.cos(player.angle), s2 = Math.sin(player.angle);
-      nx = best.nlx * c2 - best.nly * s2;
-      ny = best.nlx * s2 + best.nly * c2;
-      const pushDist = best.d + ball.radius + 2;
-      ball.x += nx * pushDist;
-      ball.y += ny * pushDist;
+      const side = lx >= 0 ? 1 : -1;
+      const edgeDist = side > 0 ? hw - lx : hw + lx;
+      const pushDist = edgeDist + ball.radius + 1;
+      nx = side * c2; ny = side * s2;
+      ball.x += nx * pushDist; ball.y += ny * pushDist;
+      clampBallToBounds(ball);
     } else {
       const dist = Math.sqrt(distSq);
       const nlx = distX / dist, nly = distY / dist;
@@ -952,8 +962,8 @@ function checkRacketCollision(ball, player) {
       nx = nlx * c2 - nly * s2;
       ny = nlx * s2 + nly * c2;
       const overlap = ball.radius - dist;
-      ball.x += nx * (overlap + 2);
-      ball.y += ny * (overlap + 2);
+      ball.x += nx * (overlap + 2); ball.y += ny * (overlap + 2);
+      clampBallToBounds(ball);
     }
     // Reflect velocity
     const dot = ball.dx * nx + ball.dy * ny;
