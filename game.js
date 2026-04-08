@@ -840,9 +840,9 @@ function updateAI(player, diffKey) {
     ownBall.x < edgeBuf || ownBall.x > CANVAS_SIZE - edgeBuf ||
     ownBall.y < edgeBuf || ownBall.y > CANVAS_SIZE - edgeBuf);
 
-  // Hysteresis: stay trapping if pocket has < 80 enemy blocks, leave when >= 100 or too few
-  if (trappedEnemy < 15 || trappedEnemy >= 100 || ballNearEdge) ai.stayTrapping = false;
-  else if (trappedEnemy >= 15 && trappedEnemy < 80) ai.stayTrapping = true;
+  // Hysteresis: stay trapping if pocket has < 80 enemy blocks, leave when >= 100 or 0
+  if (trappedEnemy === 0 || trappedEnemy >= 100 || ballNearEdge) ai.stayTrapping = false;
+  else if (trappedEnemy > 0 && trappedEnemy < 80) ai.stayTrapping = true;
 
   // --- Decide target ---
   let targetX = player.cx, targetY = player.cy;
@@ -853,15 +853,22 @@ function updateAI(player, diffKey) {
     targetX = bestPU.gridX * SQUARE_SIZE + SQUARE_SIZE / 2;
     targetY = bestPU.gridY * SQUARE_SIZE + SQUARE_SIZE / 2;
     desiredAngle = aiBestAngle(player, targetX, targetY);
-  } else if (ownBall && trappedEnemy >= 15 && !ballNearEdge && ownDist < CANVAS_SIZE * 0.4 &&
+  } else if (ownBall && trappedEnemy > 0 && !ballNearEdge && ownDist < CANVAS_SIZE * 0.4 &&
              (isDay ? ownBall.x > CANVAS_SIZE * 0.35 : ownBall.x < CANVAS_SIZE * 0.65)) {
-    // Priority 2: Trap own ball — only when nearby, enough enemy blocks exist, ball not near any edge
+    // Priority 2: Trap own ball — only when nearby, enemy blocks exist, ball not near any edge
     const gap = player.width / 2 + ownBall.radius + 4;
     targetX = isDay ? ownBall.x - gap : ownBall.x + gap;
     targetX = Math.max(player.width / 2 + 2, Math.min(CANVAS_SIZE - player.width / 2 - 2, targetX));
     targetY = usePrediction ? predictBallY(ownBall, targetX) : ownBall.y;
     targetY += (Math.random() - 0.5) * jitter;
-    desiredAngle = 0; // vertical racket for trapping
+
+    // If ball is near a side edge, rotate racket to deflect it inward
+    const edgeMargin = SQUARE_SIZE * 3;
+    if (ownBall.x < edgeMargin || ownBall.x > CANVAS_SIZE - edgeMargin) {
+      desiredAngle = ownBall.y < CANVAS_SIZE / 2 ? ROT_SNAP : -ROT_SNAP;
+    } else {
+      desiredAngle = 0;
+    }
   } else {
     // Priority 3: Block opponent balls (no own ball available)
     let bestBall = null, bestUrgency = -Infinity;
