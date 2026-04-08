@@ -236,12 +236,8 @@ const audio = {
 };
 
 // ==================== GAME STATE ====================
-const AI_CONFIG = {
-  easy:    { speedMult: 0.38, reactionFrames: 18, jitter: 35, seeksPowerups: false, predicts: false, traps: false },
-  medium:  { speedMult: 0.62, reactionFrames: 10, jitter: 18, seeksPowerups: true,  predicts: false, traps: false },
-  hard:    { speedMult: 0.88, reactionFrames: 4,  jitter: 8,  seeksPowerups: true,  predicts: true,  traps: true },
-  hardest: { speedMult: 1.0,  reactionFrames: 0,  jitter: 0,  seeksPowerups: true,  predicts: true,  traps: true },
-};
+// AI skill: 0 (easiest) to 1 (hardest). All behavior derives from this single value.
+const AI_SKILL = { easy: 0.15, medium: 0.45, hard: 0.75, hardest: 1.0 };
 
 let game = { state: 'menu', timeRemaining: 0, tickCount: 0, winner: null };
 let squares = [];
@@ -253,7 +249,10 @@ let particles = [], ballTrails = [];
 let screenShake = { intensity: 0 };
 let dayScore = 0, nightScore = 0;
 let lastSpawn = { day: 0, night: 0 };
-let aiState = { p1: { targetX: 0, targetY: 0, reactionCounter: 0, bestDistAtStuckStart: Infinity, stayTrapping: false }, p2: { targetX: 0, targetY: 0, reactionCounter: 0, bestDistAtStuckStart: Infinity, stayTrapping: false } };
+function makeAiState(x, y) {
+  return { targetX: x, targetY: y, reactionCounter: 0, stayTrapping: false, isolated: false, isolationCheckAt: 0 };
+}
+let aiState = { p1: makeAiState(0, 0), p2: makeAiState(0, 0) };
 const TELEPORT_MAX = 3;
 const TELEPORT_HOLD_FRAMES = 120; // 2 seconds at 60fps
 let teleportState = {
@@ -672,13 +671,117 @@ function teleportBallToRacket(player) {
 }
 
 // ==================== AI ====================
-function updateAI(player, diffKey) {
-  const cfg = AI_CONFIG[settings[diffKey]] || AI_CONFIG.medium;
 
-  // Reset rotation to vertical
-  if (player.angle > 0.01) rotatePlayer(player, -ROT_SNAP);
-  else if (player.angle < -0.01) rotatePlayer(player, ROT_SNAP);
-  else if (isValidRotatedPos(player, player.cx, player.cy, 0)) player.angle = 0;
+// Flood-fill reachability: is the racket connected to any own ball via own-color squares?
+// Runs at most once per second per AI player.
+function aiCheckIsolation(player, _playerKey, ai) {
+  const now = game.tickCount;
+  if (now < ai.isolationCheckAt) return;
+  ai.isolationCheckAt = now + TICK_RATE; // next check in 1 second
+
+  const ownColor = player.team === 'day' ? DAY_COLOR : NIGHT_COLOR;
+  // Seed grid cells under the racket
+  const aabb = getRotatedAABB(player.cx, player.cy, player.width, player.height, player.angle);
+  const iMin = Math.max(0, Math.floor(aabb.left / SQUARE_SIZE));
+  const iMax = Math.min(NUM_SQUARES - 1, Math.floor(aabb.right / SQUARE_SIZE));
+  const jMin = Math.max(0, Math.floor(aabb.top / SQUARE_SIZE));
+  const jMax = Math.min(NUM_SQUARES - 1, Math.floor(aabb.bottom / SQUARE_SIZE));
+
+  // Ball target cells
+  const ballCells = new Set();
+  for (const b of balls) {
+    if (b.team !== player.team) continue;
+    const bi = Math.floor(b.x / SQUARE_SIZE), bj = Math.floor(b.y / SQUARE_SIZE);
+    if (bi >= 0 && bi < NUM_SQUARES && bj >= 0 && bj < NUM_SQUARES) ballCells.add(bi * NUM_SQUARES + bj);
+  }
+  if (ballCells.size === 0) { ai.isolated = true; return; }
+
+  // BFS on own-color grid cells (flat visited array for speed)
+  const visited = new Uint8Array(NUM_SQUARES * NUM_SQUARES);
+  const queue = [];
+  for (let i = iMin; i <= iMax; i++) {
+    for (let j = jMin; j <= jMax; j++) {
+      const key = i * NUM_SQUARES + j;
+      if (!visited[key]) { visited[key] = 1; queue.push(key); }
+    }
+  }
+  let head = 0;
+  while (head < queue.length) {
+    const key = queue[head++];
+    if (ballCells.has(key)) { ai.isolated = false; return; }
+    const ci = (key / NUM_SQUARES) | 0, cj = key % NUM_SQUARES;
+    const neighbors = [
+      ci > 0 ? key - NUM_SQUARES : -1,
+      ci < NUM_SQUARES - 1 ? key + NUM_SQUARES : -1,
+      cj > 0 ? key - 1 : -1,
+      cj < NUM_SQUARES - 1 ? key + 1 : -1,
+    ];
+    for (const nk of neighbors) {
+      if (nk >= 0 && !visited[nk]) {
+        const ni = (nk / NUM_SQUARES) | 0, nj = nk % NUM_SQUARES;
+        if (squares[ni][nj] === ownColor) { visited[nk] = 1; queue.push(nk); }
+      }
+    }
+  }
+  ai.isolated = true;
+}
+
+// AI movement: rotate toward desired angle, then move toward target
+function aiMoveToward(player, targetX, targetY, speed, desiredAngle) {
+  // Step 1: rotate toward desired angle (default: vertical)
+  const goalAngle = desiredAngle ?? 0;
+  const angleDiff = goalAngle - player.angle;
+  if (Math.abs(angleDiff) > 0.01) {
+    const dir = angleDiff > 0 ? 1 : -1;
+    const nextAngle = Math.round((player.angle + dir * ROT_SNAP) / ROT_SNAP) * ROT_SNAP;
+    if (isValidRotatedPos(player, player.cx, player.cy, nextAngle)) {
+      player.angle = nextAngle;
+    }
+  } else if (player.angle !== goalAngle && isValidRotatedPos(player, player.cx, player.cy, goalAngle)) {
+    player.angle = goalAngle;
+  }
+
+  // Step 2: move toward target
+  const dx = Math.max(-speed, Math.min(speed, targetX - player.cx));
+  const dy = Math.max(-speed, Math.min(speed, targetY - player.cy));
+  const prevX = player.cx, prevY = player.cy;
+  movePlayer(player, player.cx + dx, player.cy + dy);
+
+  // Step 3: if blocked and wanted to move, try one rotation to get unstuck
+  const wantedToMove = Math.abs(dx) + Math.abs(dy) > 1;
+  const actuallyMoved = Math.abs(player.cx - prevX) + Math.abs(player.cy - prevY) > 0.5;
+  if (wantedToMove && !actuallyMoved) {
+    // Only try the direction closer to our goal angle to avoid oscillation
+    const tryDir = angleDiff >= 0 ? ROT_SNAP : -ROT_SNAP;
+    const tryAngle = Math.round((player.angle + tryDir) / ROT_SNAP) * ROT_SNAP;
+    if (isValidRotatedPos(player, player.cx, player.cy, tryAngle)) {
+      player.angle = tryAngle;
+      movePlayer(player, player.cx + dx, player.cy + dy);
+    }
+  }
+}
+
+// Compute the best angle for the racket to face the target direction
+function aiBestAngle(player, targetX, targetY) {
+  const dx = targetX - player.cx, dy = targetY - player.cy;
+  if (Math.abs(dx) + Math.abs(dy) < 5) return 0; // too close, stay vertical
+  // Racket's long axis should be perpendicular to travel direction
+  // Travel angle → perpendicular angle for the racket
+  const travelAngle = Math.atan2(dy, dx);
+  const perpAngle = travelAngle + Math.PI / 2;
+  // Snap to nearest 45-degree multiple
+  return Math.round(perpAngle / ROT_SNAP) * ROT_SNAP;
+}
+
+function updateAI(player, diffKey) {
+  const skill = AI_SKILL[settings[diffKey]] ?? AI_SKILL.medium;
+
+  // Derived parameters from skill (0-1)
+  const speedMult = 0.3 + skill * 0.7;             // 0.30 – 1.00
+  const reactionFrames = Math.round(20 * (1 - skill)); // 20 – 0
+  const jitter = 40 * (1 - skill);                  // 40 – 0
+  const usePrediction = skill >= 0.4;
+  const seeksPowerups = skill >= 0.3;
 
   const playerKey = player.team === 'day' ? 'p1' : 'p2';
   const ai = aiState[playerKey];
@@ -686,14 +789,13 @@ function updateAI(player, diffKey) {
   // Reaction delay — keep moving toward cached target
   if (ai.reactionCounter > 0) {
     ai.reactionCounter--;
-    const speed = player.speed * cfg.speedMult;
-    const dx = Math.max(-speed, Math.min(speed, ai.targetX - player.cx));
-    const dy = Math.max(-speed, Math.min(speed, ai.targetY - player.cy));
-    movePlayer(player, player.cx + dx, player.cy + dy);
-    aiUpdateTeleport(player, playerKey, ai);
+    const speed = player.speed * speedMult;
+    aiMoveToward(player, ai.targetX, ai.targetY, speed);
+    aiCheckIsolation(player, playerKey, ai);
+    chargeTeleport(player, playerKey, ai.isolated && teleportState[playerKey].remaining > 0);
     return;
   }
-  ai.reactionCounter = cfg.reactionFrames;
+  ai.reactionCounter = reactionFrames;
 
   const isDay = player.team === 'day';
   const enemyColor = isDay ? NIGHT_COLOR : DAY_COLOR;
@@ -710,7 +812,7 @@ function updateAI(player, diffKey) {
 
   // Nearest collectible powerup (on own-color squares)
   let bestPU = null, bestPUDist = Infinity;
-  if (cfg.seeksPowerups) {
+  if (seeksPowerups) {
     for (const pu of powerups) {
       if (squares[pu.gridX][pu.gridY] === enemyColor) continue;
       const px = pu.gridX * SQUARE_SIZE + SQUARE_SIZE / 2;
@@ -720,37 +822,48 @@ function updateAI(player, diffKey) {
     }
   }
 
-  // Count enemy blocks in pocket (between racket and far edge) for trapping hysteresis
+  // Count enemy blocks near the ball — only trap when the ball is actually near enemy territory
   let trappedEnemy = 0;
-  if (cfg.traps && ownBall) {
-    const colStart = isDay ? Math.max(0, Math.floor(player.cx / SQUARE_SIZE)) : 0;
-    const colEnd = isDay ? NUM_SQUARES : Math.min(NUM_SQUARES, Math.ceil(player.cx / SQUARE_SIZE));
-    for (let i = colStart; i < colEnd; i++)
-      for (let j = 0; j < NUM_SQUARES; j++)
+  if (ownBall) {
+    const radius = 6; // check 6-square radius around ball
+    const bi = Math.floor(ownBall.x / SQUARE_SIZE), bj = Math.floor(ownBall.y / SQUARE_SIZE);
+    const iMin = Math.max(0, bi - radius), iMax = Math.min(NUM_SQUARES - 1, bi + radius);
+    const jMin = Math.max(0, bj - radius), jMax = Math.min(NUM_SQUARES - 1, bj + radius);
+    for (let i = iMin; i <= iMax; i++)
+      for (let j = jMin; j <= jMax; j++)
         if (squares[i][j] === enemyColor) trappedEnemy++;
   }
 
-  // Hysteresis: stay trapping if pocket has < 80 enemy blocks, leave when >= 100 or 0
-  if (trappedEnemy === 0 || trappedEnemy >= 100) ai.stayTrapping = false;
-  else if (trappedEnemy > 0 && trappedEnemy < 80) ai.stayTrapping = true;
-  // Between 80-100: keep current state (hysteresis band)
+  // Don't trap near any edge — ball against an edge/corner has nowhere productive to paint
+  const edgeBuf = SQUARE_SIZE * 4; // 4 squares from any edge
+  const ballNearEdge = ownBall && (
+    ownBall.x < edgeBuf || ownBall.x > CANVAS_SIZE - edgeBuf ||
+    ownBall.y < edgeBuf || ownBall.y > CANVAS_SIZE - edgeBuf);
+
+  // Hysteresis: stay trapping if pocket has < 80 enemy blocks, leave when >= 100 or too few
+  if (trappedEnemy < 15 || trappedEnemy >= 100 || ballNearEdge) ai.stayTrapping = false;
+  else if (trappedEnemy >= 15 && trappedEnemy < 80) ai.stayTrapping = true;
 
   // --- Decide target ---
   let targetX = player.cx, targetY = player.cy;
+  let desiredAngle = 0; // default: vertical racket
 
   if (bestPU && !ai.stayTrapping) {
     // Priority 1: Collect powerups (unless trapping productively)
     targetX = bestPU.gridX * SQUARE_SIZE + SQUARE_SIZE / 2;
     targetY = bestPU.gridY * SQUARE_SIZE + SQUARE_SIZE / 2;
-  } else if (cfg.traps && ownBall) {
-    // Priority 2: Trap own ball — position on own-territory side of ball
+    desiredAngle = aiBestAngle(player, targetX, targetY);
+  } else if (ownBall && trappedEnemy >= 15 && !ballNearEdge && ownDist < CANVAS_SIZE * 0.4 &&
+             (isDay ? ownBall.x > CANVAS_SIZE * 0.35 : ownBall.x < CANVAS_SIZE * 0.65)) {
+    // Priority 2: Trap own ball — only when nearby, enough enemy blocks exist, ball not near any edge
     const gap = player.width / 2 + ownBall.radius + 4;
     targetX = isDay ? ownBall.x - gap : ownBall.x + gap;
     targetX = Math.max(player.width / 2 + 2, Math.min(CANVAS_SIZE - player.width / 2 - 2, targetX));
-    targetY = cfg.predicts ? predictBallY(ownBall, targetX) : ownBall.y;
-    targetY += (Math.random() - 0.5) * cfg.jitter;
+    targetY = usePrediction ? predictBallY(ownBall, targetX) : ownBall.y;
+    targetY += (Math.random() - 0.5) * jitter;
+    desiredAngle = 0; // vertical racket for trapping
   } else {
-    // Priority 3: Block opponent balls (easy/medium or no own ball)
+    // Priority 3: Block opponent balls (no own ball available)
     let bestBall = null, bestUrgency = -Infinity;
     for (const ball of balls) {
       if (ball.team === player.team) continue;
@@ -760,14 +873,13 @@ function updateAI(player, diffKey) {
       if (urgency > bestUrgency) { bestUrgency = urgency; bestBall = ball; }
     }
 
-    if (bestBall && bestUrgency > 0.3) {
-      targetY = cfg.predicts ? predictBallY(bestBall, player.cx) : bestBall.y;
+    if (bestBall) {
+      targetY = usePrediction ? predictBallY(bestBall, player.cx) : bestBall.y;
       targetX = isDay
         ? Math.max(40, Math.min(CANVAS_SIZE * 0.5 - 20, bestBall.x - 80))
         : Math.max(CANVAS_SIZE * 0.5 + 20, Math.min(CANVAS_SIZE - 40, bestBall.x + 80));
-      targetY += (Math.random() - 0.5) * cfg.jitter;
+      targetY += (Math.random() - 0.5) * jitter;
     } else {
-      // Advance toward enemy territory
       targetX = isDay ? CANVAS_SIZE * 0.6 : CANVAS_SIZE * 0.4;
       targetY = CANVAS_SIZE / 2 + (Math.random() - 0.5) * 100;
     }
@@ -775,33 +887,12 @@ function updateAI(player, diffKey) {
 
   ai.targetX = targetX;
   ai.targetY = targetY;
-  const speed = player.speed * cfg.speedMult;
-  movePlayer(player, player.cx + Math.max(-speed, Math.min(speed, targetX - player.cx)),
-    player.cy + Math.max(-speed, Math.min(speed, targetY - player.cy)));
+  const speed = player.speed * speedMult;
+  aiMoveToward(player, targetX, targetY, speed, desiredAngle);
 
-  aiUpdateTeleport(player, playerKey, ai);
-}
-
-function aiUpdateTeleport(player, playerKey, ai) {
-  // Teleport: charge if stuck and can't reach own nearest ball
-  let wantsTeleport = false;
-  let nearestOwnBall = null, nearestOwnDist = Infinity;
-  for (const b of balls) {
-    if (b.team !== player.team) continue;
-    const d = Math.hypot(b.x - player.cx, b.y - player.cy);
-    if (d < nearestOwnDist) { nearestOwnDist = d; nearestOwnBall = b; }
-  }
-  if (nearestOwnBall && teleportState[playerKey].remaining > 0) {
-    const noProgress = nearestOwnDist > CANVAS_SIZE * 0.15 &&
-      nearestOwnDist >= ai.bestDistAtStuckStart - SQUARE_SIZE;
-    if (noProgress) {
-      wantsTeleport = true;
-    } else {
-      ai.bestDistAtStuckStart = nearestOwnDist;
-    }
-  }
-  if (!wantsTeleport) ai.bestDistAtStuckStart = Infinity;
-  chargeTeleport(player, playerKey, wantsTeleport);
+  // Teleport: use if isolated from own balls (checked via flood-fill)
+  aiCheckIsolation(player, playerKey, ai);
+  chargeTeleport(player, playerKey, ai.isolated && teleportState[playerKey].remaining > 0);
 }
 
 function predictBallY(ball, targetX) {
@@ -2256,7 +2347,7 @@ function startGame() {
   dayScore = TOTAL_SQUARES / 2; nightScore = TOTAL_SQUARES / 2;
   lastSpawn = { day: 0, night: 0 };
   mirroredSeq = []; mirroredIdx = { day: 0, night: 0 };
-  aiState = { p1: { targetX: player1.cx, targetY: player1.cy, reactionCounter: 0, bestDistAtStuckStart: Infinity, stayTrapping: false }, p2: { targetX: player2.cx, targetY: player2.cy, reactionCounter: 0, bestDistAtStuckStart: Infinity, stayTrapping: false } };
+  aiState = { p1: makeAiState(player1.cx, player1.cy), p2: makeAiState(player2.cx, player2.cy) };
 
   game.state = 'playing'; game.tickCount = 0; game.winner = null;
   game.timeRemaining = settings.winCondition === 'domination' ? Infinity : settings.duration;
