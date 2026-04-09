@@ -249,6 +249,8 @@ function makeAiState(x, y) {
 let aiState = { p1: makeAiState(0, 0), p2: makeAiState(0, 0) };
 const TELEPORT_MAX = 3;
 const TELEPORT_HOLD_FRAMES = 120; // 2 seconds at 60fps
+const TELEPORT_BLINK_START = 30;  // start blinking at 500ms
+const TELEPORT_BLINK_SPEED = 10;  // sine cycle speed
 let teleportState = {
   p1: { holdFrames: 0, remaining: TELEPORT_MAX },
   p2: { holdFrames: 0, remaining: TELEPORT_MAX },
@@ -273,15 +275,10 @@ function getRotatedCorners(cx, cy, w, h, angle) {
   ];
 }
 
-// Reusable AABB object — avoids allocation per call in hot paths.
-// Callers must use the result immediately (before the next call to getRotatedAABB).
-const _aabb = { left: 0, top: 0, right: 0, bottom: 0 };
 function getRotatedAABB(cx, cy, w, h, angle) {
   const ca = Math.abs(Math.cos(angle)), sa = Math.abs(Math.sin(angle));
   const bw = w * ca + h * sa, bh = w * sa + h * ca;
-  _aabb.left = cx - bw / 2; _aabb.top = cy - bh / 2;
-  _aabb.right = cx + bw / 2; _aabb.bottom = cy + bh / 2;
-  return _aabb;
+  return { left: cx - bw / 2, top: cy - bh / 2, right: cx + bw / 2, bottom: cy + bh / 2 };
 }
 
 // Check that the rotated rectangle fits within canvas bounds
@@ -490,7 +487,6 @@ function updatePlayers() {
     updatePlayerInput(player1, 'p1', keyBindings.p1);
   }
   applyGridSnap(player1);
-  _cacheTrig(player1);
   pushBallsFromRacket(player1);
 
   if (isPlayerStuck(player2)) rescuePlayer(player2);
@@ -500,7 +496,6 @@ function updatePlayers() {
     updatePlayerInput(player2, 'p2', keyBindings.p2);
   }
   applyGridSnap(player2);
-  _cacheTrig(player2);
   pushBallsFromRacket(player2);
 
   // Compute racket velocity for power shot
@@ -508,10 +503,7 @@ function updatePlayers() {
   player2.vx = player2.cx - player2.prevCx; player2.vy = player2.cy - player2.prevCy;
 }
 
-function _cacheTrig(pl) {
-  pl._cosA = Math.cos(pl.angle); pl._sinA = Math.sin(pl.angle);
-  pl._cosNA = Math.cos(-pl.angle); pl._sinNA = Math.sin(-pl.angle);
-}
+
 
 function chargeTeleport(player, pKey, charging) {
   const ts = teleportState[pKey];
@@ -557,7 +549,6 @@ function updatePlayerInput(player, pKey, binds) {
     rotHoldFrames[holdKeyL] = 0; rotHoldFrames[holdKeyR] = 0;
   }
   chargeTeleport(player, pKey, rotLeft && rotRight);
-
   const ji = joystickInput[pKey];
   if (ji) {
     const mag = Math.sqrt(ji.dx * ji.dx + ji.dy * ji.dy);
@@ -585,10 +576,10 @@ function clampBallToBounds(ball) {
 
 function pushBallOutOfRacket(ball, player) {
   const dx = ball.x - player.cx, dy = ball.y - player.cy;
-  const c = player._cosNA, s = player._sinNA; // cached cos(-angle), sin(-angle)
+  const c = Math.cos(-player.angle), s = Math.sin(-player.angle);
   const lx = dx * c - dy * s, ly = dx * s + dy * c;
   const hw = player.width / 2, hh = player.height / 2;
-  const c2 = player._cosA, s2 = player._sinA; // cached cos(angle), sin(angle)
+  const c2 = Math.cos(player.angle), s2 = Math.sin(player.angle);
 
   let wnx, wny;
 
@@ -1080,7 +1071,7 @@ function checkSquareCollision(ball) {
 
 function checkRacketCollision(ball, player) {
   const dx = ball.x - player.cx, dy = ball.y - player.cy;
-  const c = player._cosNA, s = player._sinNA; // cached cos(-angle), sin(-angle)
+  const c = Math.cos(-player.angle), s = Math.sin(-player.angle);
   const lx = dx * c - dy * s, ly = dx * s + dy * c;
   const hw = player.width / 2, hh = player.height / 2;
 
@@ -1090,7 +1081,7 @@ function checkRacketCollision(ball, player) {
   const distSq = distX * distX + distY * distY;
 
   if (distSq < ball.radius * ball.radius) {
-    const c2 = player._cosA, s2 = player._sinA; // cached cos(angle), sin(angle)
+    const c2 = Math.cos(player.angle), s2 = Math.sin(player.angle);
     let nx, ny;
     if (distSq < 0.01) {
       // Ball center inside racket — push out the nearest same-side edge
@@ -1627,17 +1618,16 @@ let _nightPacked = _packColor(NIGHT_COLOR);
 function renderSquares() {
   const buf = _gridBuf32;
   const sq = SQUARE_SIZE;
+  const w = CANVAS_SIZE;
   for (let i = 0; i < NUM_SQUARES; i++) {
     const col = squares[i];
     const px0 = i * sq;
+    const px1 = px0 + sq;
     for (let j = 0; j < NUM_SQUARES; j++) {
       const packed = col[j] === DAY_COLOR ? _dayPacked : _nightPacked;
       const py0 = j * sq;
-      for (let y = py0; y < py0 + sq; y++) {
-        const rowOff = y * CANVAS_SIZE + px0;
-        for (let x = 0; x < sq; x++) {
-          buf[rowOff + x] = packed;
-        }
+      for (let y = py0, yEnd = py0 + sq; y < yEnd; y++) {
+        buf.fill(packed, y * w + px0, y * w + px1); // native fill — ~5x faster than JS loop
       }
     }
   }
@@ -1653,14 +1643,17 @@ function render(alpha = 1) {
     ctx.translate((Math.random() - 0.5) * screenShake.intensity, (Math.random() - 0.5) * screenShake.intensity);
   }
 
-  // Grid lines
+  // Grid lines (single batched path)
   if (settings.effectsEnabled && settings.gridEffect) {
     ctx.strokeStyle = 'rgba(0,0,0,0.06)';
     ctx.lineWidth = 0.5;
+    ctx.beginPath();
     for (let i = 0; i <= NUM_SQUARES; i++) {
-      ctx.beginPath(); ctx.moveTo(i * SQUARE_SIZE, 0); ctx.lineTo(i * SQUARE_SIZE, CANVAS_SIZE); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(0, i * SQUARE_SIZE); ctx.lineTo(CANVAS_SIZE, i * SQUARE_SIZE); ctx.stroke();
+      const pos = i * SQUARE_SIZE;
+      ctx.moveTo(pos, 0); ctx.lineTo(pos, CANVAS_SIZE);
+      ctx.moveTo(0, pos); ctx.lineTo(CANVAS_SIZE, pos);
     }
+    ctx.stroke();
   }
 
   // Ball trails
@@ -1705,8 +1698,6 @@ function render(alpha = 1) {
   }
 
   // Players — blink racket during teleport charge (after 500ms)
-  const TELEPORT_BLINK_START = 30; // 500ms at 60fps
-  const TELEPORT_BLINK_SPEED = 10; // fast sine cycles
   let p1Color = DAY_BALL_COLOR;
   if (teleportState.p1.holdFrames > TELEPORT_BLINK_START) {
     const t = (Math.sin((teleportState.p1.holdFrames - TELEPORT_BLINK_START) * TELEPORT_BLINK_SPEED * Math.PI / TELEPORT_HOLD_FRAMES * 2) + 1) / 2;
