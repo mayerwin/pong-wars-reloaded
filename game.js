@@ -273,10 +273,15 @@ function getRotatedCorners(cx, cy, w, h, angle) {
   ];
 }
 
+// Reusable AABB object — avoids allocation per call in hot paths.
+// Callers must use the result immediately (before the next call to getRotatedAABB).
+const _aabb = { left: 0, top: 0, right: 0, bottom: 0 };
 function getRotatedAABB(cx, cy, w, h, angle) {
   const ca = Math.abs(Math.cos(angle)), sa = Math.abs(Math.sin(angle));
   const bw = w * ca + h * sa, bh = w * sa + h * ca;
-  return { left: cx - bw / 2, top: cy - bh / 2, right: cx + bw / 2, bottom: cy + bh / 2 };
+  _aabb.left = cx - bw / 2; _aabb.top = cy - bh / 2;
+  _aabb.right = cx + bw / 2; _aabb.bottom = cy + bh / 2;
+  return _aabb;
 }
 
 // Check that the rotated rectangle fits within canvas bounds
@@ -431,14 +436,6 @@ function movePlayer(player, targetCx, targetCy) {
   }
 }
 
-function rotatePlayer(player, delta) {
-  const dir = delta > 0 ? 1 : -1;
-  const target = Math.round((player.angle + dir * ROT_SNAP) / ROT_SNAP) * ROT_SNAP;
-  if (isValidRotatedPos(player, player.cx, player.cy, target)) {
-    player.angle = target;
-  }
-}
-
 function snapRotation(player, targetAngle) {
   // Only snap to exact 45-degree multiples
   if (isValidRotatedPos(player, player.cx, player.cy, targetAngle)) {
@@ -493,6 +490,7 @@ function updatePlayers() {
     updatePlayerInput(player1, 'p1', keyBindings.p1);
   }
   applyGridSnap(player1);
+  _cacheTrig(player1);
   pushBallsFromRacket(player1);
 
   if (isPlayerStuck(player2)) rescuePlayer(player2);
@@ -502,11 +500,17 @@ function updatePlayers() {
     updatePlayerInput(player2, 'p2', keyBindings.p2);
   }
   applyGridSnap(player2);
+  _cacheTrig(player2);
   pushBallsFromRacket(player2);
 
   // Compute racket velocity for power shot
   player1.vx = player1.cx - player1.prevCx; player1.vy = player1.cy - player1.prevCy;
   player2.vx = player2.cx - player2.prevCx; player2.vy = player2.cy - player2.prevCy;
+}
+
+function _cacheTrig(pl) {
+  pl._cosA = Math.cos(pl.angle); pl._sinA = Math.sin(pl.angle);
+  pl._cosNA = Math.cos(-pl.angle); pl._sinNA = Math.sin(-pl.angle);
 }
 
 function chargeTeleport(player, pKey, charging) {
@@ -581,10 +585,10 @@ function clampBallToBounds(ball) {
 
 function pushBallOutOfRacket(ball, player) {
   const dx = ball.x - player.cx, dy = ball.y - player.cy;
-  const c = Math.cos(-player.angle), s = Math.sin(-player.angle);
+  const c = player._cosNA, s = player._sinNA; // cached cos(-angle), sin(-angle)
   const lx = dx * c - dy * s, ly = dx * s + dy * c;
   const hw = player.width / 2, hh = player.height / 2;
-  const c2 = Math.cos(player.angle), s2 = Math.sin(player.angle);
+  const c2 = player._cosA, s2 = player._sinA; // cached cos(angle), sin(angle)
 
   let wnx, wny;
 
@@ -910,10 +914,14 @@ function predictBallY(ball, targetX) {
 // ==================== BALL PHYSICS ====================
 function updateBalls() {
   const now = game.tickCount / TICK_RATE;
-  balls = balls.filter(b => !b.isExtra || now < b.expiresAt);
+  // Remove expired extra balls in-place (avoids allocating a new array via filter)
+  for (let i = balls.length - 1; i >= 0; i--) {
+    if (balls[i].isExtra && now >= balls[i].expiresAt) {
+      balls[i] = balls[balls.length - 1]; balls.pop();
+    }
+  }
 
   for (const ball of balls) {
-    const effect = activeEffects[ball.team];
     const bigStacks = effectStacks(ball.team, 'BIGGER_BALL', now);
     ball.radius = BASE_BALL_RADIUS * (1 + bigStacks * BIGGER_BALL_MULT);
 
@@ -1072,7 +1080,7 @@ function checkSquareCollision(ball) {
 
 function checkRacketCollision(ball, player) {
   const dx = ball.x - player.cx, dy = ball.y - player.cy;
-  const c = Math.cos(-player.angle), s = Math.sin(-player.angle);
+  const c = player._cosNA, s = player._sinNA; // cached cos(-angle), sin(-angle)
   const lx = dx * c - dy * s, ly = dx * s + dy * c;
   const hw = player.width / 2, hh = player.height / 2;
 
@@ -1082,10 +1090,10 @@ function checkRacketCollision(ball, player) {
   const distSq = distX * distX + distY * distY;
 
   if (distSq < ball.radius * ball.radius) {
+    const c2 = player._cosA, s2 = player._sinA; // cached cos(angle), sin(angle)
     let nx, ny;
     if (distSq < 0.01) {
       // Ball center inside racket — push out the nearest same-side edge
-      const c2 = Math.cos(player.angle), s2 = Math.sin(player.angle);
       const side = lx >= 0 ? 1 : -1;
       const edgeDist = side > 0 ? hw - lx : hw + lx;
       const pushDist = edgeDist + ball.radius + 1;
@@ -1095,7 +1103,6 @@ function checkRacketCollision(ball, player) {
     } else {
       const dist = Math.sqrt(distSq);
       const nlx = distX / dist, nly = distY / dist;
-      const c2 = Math.cos(player.angle), s2 = Math.sin(player.angle);
       nx = nlx * c2 - nly * s2;
       ny = nlx * s2 + nly * c2;
       const overlap = ball.radius - dist;
@@ -1134,8 +1141,6 @@ function checkRacketCollision(ball, player) {
     }
   }
 }
-
-// Boundary prediction replaced by inline TOI logic in updateBalls
 
 function addRandomness(ball) {
   ball.dx += Math.random() * 0.02 - 0.01;
@@ -1251,12 +1256,16 @@ function updatePowerups() {
 }
 
 function spawnPowerup(color) {
-  const candidates = [];
+  // Reservoir sampling: pick a random matching square without building an array
+  let count = 0, pi = 0, pj = 0;
   for (let i = 0; i < NUM_SQUARES; i++)
     for (let j = 0; j < NUM_SQUARES; j++)
-      if (squares[i][j] === color) candidates.push({ i, j });
-  if (candidates.length < 5) return;
-  const pos = candidates[Math.floor(Math.random() * candidates.length)];
+      if (squares[i][j] === color) {
+        count++;
+        if (Math.random() * count < 1) { pi = i; pj = j; }
+      }
+  if (count < 5) return;
+  const pos = { i: pi, j: pj };
   let type;
   if (settings.mirroredPowerups) {
     const team = (color === DAY_COLOR) ? 'day' : 'night';
