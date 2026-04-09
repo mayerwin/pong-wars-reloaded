@@ -57,16 +57,9 @@ function applyTouchMode() {
 }
 applyTouchMode();
 
-const DEBUG_BALL_SHADOWS = false; // set true to draw persistent purple shadow at each ball render position
-
 // ==================== DOM REFS ====================
 const canvas = document.getElementById("pongCanvas");
 const ctx = canvas.getContext("2d");
-
-// Debug offscreen canvas (never cleared) for persistent ball shadows
-const debugCanvas = document.createElement("canvas");
-debugCanvas.width = canvas.width; debugCanvas.height = canvas.height;
-const debugCtx = debugCanvas.getContext("2d");
 const dayScoreEl = document.getElementById("day-score");
 const nightScoreEl = document.getElementById("night-score");
 const timerEl = document.getElementById("timer-display");
@@ -246,6 +239,7 @@ let player1, player2;
 let powerups = [];
 let activeEffects = { day: {}, night: {} };
 let particles = [], ballTrails = [];
+let _trailPool = []; // recycled trail objects to avoid GC
 let screenShake = { intensity: 0 };
 let dayScore = 0, nightScore = 0;
 let lastSpawn = { day: 0, night: 0 };
@@ -921,11 +915,9 @@ function updateBalls() {
   for (const ball of balls) {
     const effect = activeEffects[ball.team];
     const bigStacks = effectStacks(ball.team, 'BIGGER_BALL', now);
-    //ball.radius = bigStacks > 0 ? BASE_BALL_RADIUS * Math.pow(BIGGER_BALL_MULT, bigStacks) : BASE_BALL_RADIUS;
     ball.radius = BASE_BALL_RADIUS * (1 + bigStacks * BIGGER_BALL_MULT);
 
     const fastStacks = effectStacks(ball.team, 'FASTER_BALL', now);
-    //const speedMult = fastStacks > 0 ? Math.pow(FASTER_BALL_MULT, fastStacks) : 1;
     const speedMult = 1 + (fastStacks * FASTER_BALL_MULT);
 
     const totalSpeed = Math.sqrt(ball.dx * ball.dx + ball.dy * ball.dy) * speedMult;
@@ -992,7 +984,10 @@ function updateBalls() {
       checkRacketCollision(ball, player1);
       checkRacketCollision(ball, player2);
       if (settings.effectsEnabled && settings.particles) {
-        ballTrails.push({ x: ball.x, y: ball.y, color: ball.ballColor, life: 1.0, radius: ball.radius * 0.4 });
+        let t = _trailPool.pop();
+        if (t) { t.x = ball.x; t.y = ball.y; t.color = ball.ballColor; t.life = 1.0; t.radius = ball.radius * 0.4; }
+        else { t = { x: ball.x, y: ball.y, color: ball.ballColor, life: 1.0, radius: ball.radius * 0.4 }; }
+        ballTrails.push(t);
       }
     }
     // Clamping still ensures no one-pixel escapes
@@ -1180,8 +1175,8 @@ const POWERUP_LIMITS = {
 };
 
 // Mirrored powerup sequence state
-let mirroredSeq = [];   // shuffled copy of POWERUP_TYPES, shared by both teams
-let mirroredIdx = 0;    // current index into mirroredSeq
+let mirroredSeq = [];   // shuffled sequence of POWERUP_TYPES, shared by both teams
+let mirroredIdx = { day: 0, night: 0 }; // per-team index into mirroredSeq
 
 function updatePowerups() {
   const now = game.tickCount / TICK_RATE;
@@ -1223,10 +1218,7 @@ function updatePowerups() {
   for (const [pl, team] of [[player1, 'day'], [player2, 'night']]) {
     const growStacks = effectStacks(team, 'BIGGER_RACKET', now);
     const shrinkStacks = effectStacks(team, 'SHRINK_RACKET', now);
-    //let desiredH = growStacks > 0 ? BASE_PLAYER_HEIGHT * Math.pow(BIGGER_RACKET_MULT, growStacks) : BASE_PLAYER_HEIGHT;
     let desiredH = BASE_PLAYER_HEIGHT + (growStacks * SQUARE_SIZE * BIGGER_RACKET_MULT) - (shrinkStacks * SQUARE_SIZE * BIGGER_RACKET_MULT);
-
-
     desiredH = Math.max(MIN_RACKET_HEIGHT, desiredH);
     const canFit = (h) => {
       if (!isWithinBounds(pl.cx, pl.cy, pl.width, h, pl.angle)) return false;
@@ -1361,45 +1353,63 @@ function updatePowerupHUD() {
   }
 }
 
+// Cached DOM refs for per-tick HUD updates (avoid getElementById every frame)
+const _sideTimerL = document.getElementById('side-timer-left');
+const _sideTimerR = document.getElementById('side-timer-right');
+const _progBar = document.getElementById('progression-bar');
+const _progDay = document.getElementById('prog-day');
+const _progNight = document.getElementById('prog-night');
+const _sideDayScore = document.getElementById('side-day-score');
+const _sideNightScore = document.getElementById('side-night-score');
+const _sideBarL = document.getElementById('side-hud-bar-left');
+const _sideBarR = document.getElementById('side-hud-bar-right');
+const _vprogDayL = _sideBarL ? _sideBarL.querySelector('.vprog-day') : null;
+const _vprogNightL = _sideBarL ? _sideBarL.querySelector('.vprog-night') : null;
+const _vprogDayR = _sideBarR ? _sideBarR.querySelector('.vprog-day') : null;
+const _vprogNightR = _sideBarR ? _sideBarR.querySelector('.vprog-night') : null;
+// Change-detection: only write DOM when values actually change
+let _prevDayScore = -1, _prevNightScore = -1, _prevDayPct = -1, _prevShowBar = null;
+
 function updateSideTimers() {
-  const tl = document.getElementById('side-timer-left');
-  const tr = document.getElementById('side-timer-right');
-  if (tl) tl.textContent = timerEl.textContent;
-  if (tr) tr.textContent = timerEl.textContent;
+  const txt = timerEl.textContent;
+  if (_sideTimerL) _sideTimerL.textContent = txt;
+  if (_sideTimerR) _sideTimerR.textContent = txt;
 }
 
 // ==================== SCORE & WIN ====================
 function updateScoreHUD() {
-  dayScoreEl.textContent = dayScore;
-  nightScoreEl.textContent = nightScore;
-  // Progression bar
-  const bar = document.getElementById('progression-bar');
-  const showBar = settings.progressionBar && (settings.winCondition === 'combined' || settings.winCondition === 'domination');
-  bar.style.display = showBar ? 'flex' : 'none';
-  const threshold = DOMINATION_THRESHOLD;
-  const dayRaw = dayScore / TOTAL_SQUARES;
-  const range = threshold - 0.5;
-  const dayPct = Math.max(0, Math.min(100, 50 + (dayRaw - 0.5) / range * 50));
-  if (showBar) {
-    document.getElementById('prog-day').style.width = dayPct + '%';
-    document.getElementById('prog-night').style.width = (100 - dayPct) + '%';
+  if (dayScore !== _prevDayScore) {
+    _prevDayScore = dayScore;
+    dayScoreEl.textContent = dayScore;
+    if (_sideDayScore) _sideDayScore.textContent = dayScore;
   }
-  // Side HUDs (landscape mobile)
-  const sdDay = document.getElementById('side-day-score');
-  const sdNight = document.getElementById('side-night-score');
-  if (sdDay) sdDay.textContent = dayScore;
-  if (sdNight) sdNight.textContent = nightScore;
-  // Vertical side progress bars (landscape mobile — inside side-hud-bar)
-  for (const barId of ['side-hud-bar-left', 'side-hud-bar-right']) {
-    const sbar = document.getElementById(barId);
-    if (sbar) {
-      sbar.classList.toggle('prog-hidden', !showBar);
-      if (showBar) {
-        const dayEl = sbar.querySelector('.vprog-day');
-        const nightEl = sbar.querySelector('.vprog-night');
-        if (dayEl) dayEl.style.height = dayPct + '%';
-        if (nightEl) nightEl.style.height = (100 - dayPct) + '%';
-      }
+  if (nightScore !== _prevNightScore) {
+    _prevNightScore = nightScore;
+    nightScoreEl.textContent = nightScore;
+    if (_sideNightScore) _sideNightScore.textContent = nightScore;
+  }
+  // Progression bar
+  const showBar = settings.progressionBar && (settings.winCondition === 'combined' || settings.winCondition === 'domination');
+  if (showBar !== _prevShowBar) {
+    _prevShowBar = showBar;
+    _progBar.style.display = showBar ? 'flex' : 'none';
+    if (_sideBarL) _sideBarL.classList.toggle('prog-hidden', !showBar);
+    if (_sideBarR) _sideBarR.classList.toggle('prog-hidden', !showBar);
+  }
+  if (showBar) {
+    const dayRaw = dayScore / TOTAL_SQUARES;
+    const range = DOMINATION_THRESHOLD - 0.5;
+    const dayPct = Math.max(0, Math.min(100, 50 + (dayRaw - 0.5) / range * 50));
+    if (dayPct !== _prevDayPct) {
+      _prevDayPct = dayPct;
+      const dayStr = dayPct + '%';
+      const nightStr = (100 - dayPct) + '%';
+      _progDay.style.width = dayStr;
+      _progNight.style.width = nightStr;
+      if (_vprogDayL) _vprogDayL.style.height = dayStr;
+      if (_vprogNightL) _vprogNightL.style.height = nightStr;
+      if (_vprogDayR) _vprogDayR.style.height = dayStr;
+      if (_vprogNightR) _vprogNightR.style.height = nightStr;
     }
   }
 }
@@ -1485,8 +1495,11 @@ function updateParticles() {
     if (p.life <= 0) { particles[i] = particles[particles.length - 1]; particles.pop(); }
   }
   for (let i = ballTrails.length - 1; i >= 0; i--) {
-    ballTrails[i].life -= 0.12; // Faster decay for more subtle, transient trails
-    if (ballTrails[i].life <= 0) { ballTrails[i] = ballTrails[ballTrails.length - 1]; ballTrails.pop(); }
+    ballTrails[i].life -= 0.12;
+    if (ballTrails[i].life <= 0) {
+      _trailPool.push(ballTrails[i]); // recycle to pool
+      ballTrails[i] = ballTrails[ballTrails.length - 1]; ballTrails.pop();
+    }
   }
   if (screenShake.intensity > 0) {
     screenShake.intensity *= 0.88;
@@ -1590,19 +1603,46 @@ function drawPowerupIcon(cx, cy, type, size) {
   }
 }
 
+// Pre-allocated ImageData + typed arrays for fast square rendering
+const _gridImgData = ctx.createImageData(CANVAS_SIZE, CANVAS_SIZE);
+const _gridBuf32 = new Uint32Array(_gridImgData.data.buffer);
+// Pre-compute packed ABGR pixel values for each team color (little-endian)
+function _packColor(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 0xFF, g = (n >> 8) & 0xFF, b = n & 0xFF;
+  return (0xFF << 24) | (b << 16) | (g << 8) | r; // ABGR for little-endian
+}
+let _dayPacked = _packColor(DAY_COLOR);
+let _nightPacked = _packColor(NIGHT_COLOR);
+
+function renderSquares() {
+  const buf = _gridBuf32;
+  const sq = SQUARE_SIZE;
+  for (let i = 0; i < NUM_SQUARES; i++) {
+    const col = squares[i];
+    const px0 = i * sq;
+    for (let j = 0; j < NUM_SQUARES; j++) {
+      const packed = col[j] === DAY_COLOR ? _dayPacked : _nightPacked;
+      const py0 = j * sq;
+      for (let y = py0; y < py0 + sq; y++) {
+        const rowOff = y * CANVAS_SIZE + px0;
+        for (let x = 0; x < sq; x++) {
+          buf[rowOff + x] = packed;
+        }
+      }
+    }
+  }
+  ctx.putImageData(_gridImgData, 0, 0);
+}
+
 function render(alpha = 1) {
+  // Squares — bulk pixel write via ImageData (putImageData ignores transforms, so draw before shake)
+  renderSquares();
+
   ctx.save();
   if (settings.effectsEnabled && settings.screenShake && screenShake.intensity > 0) {
     ctx.translate((Math.random() - 0.5) * screenShake.intensity, (Math.random() - 0.5) * screenShake.intensity);
   }
-  ctx.clearRect(-10, -10, CANVAS_SIZE + 20, CANVAS_SIZE + 20);
-
-  // Squares
-  for (let i = 0; i < NUM_SQUARES; i++)
-    for (let j = 0; j < NUM_SQUARES; j++) {
-      ctx.fillStyle = squares[i][j];
-      ctx.fillRect(i * SQUARE_SIZE, j * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE);
-    }
 
   // Grid lines
   if (settings.effectsEnabled && settings.gridEffect) {
@@ -1676,13 +1716,6 @@ function render(alpha = 1) {
     const drawX = ball.oldX + (ball.x - ball.oldX) * alpha;
     const drawY = ball.oldY + (ball.y - ball.oldY) * alpha;
 
-    if (DEBUG_BALL_SHADOWS) {
-      debugCtx.beginPath();
-      debugCtx.arc(drawX, drawY, ball.radius, 0, Math.PI * 2);
-      debugCtx.fillStyle = "rgba(128,0,255,0.3)";
-      debugCtx.fill(); debugCtx.closePath();
-    }
-
     ctx.beginPath();
     ctx.arc(drawX, drawY, ball.radius, 0, Math.PI * 2);
     ctx.fillStyle = ball.ballColor; ctx.fill(); ctx.closePath();
@@ -1710,7 +1743,7 @@ function render(alpha = 1) {
     }
   }
   ctx.restore();
-  if (DEBUG_BALL_SHADOWS) ctx.drawImage(debugCanvas, 0, 0);
+
 }
 
 function drawRotatedPlayer(player, fillColor, alpha = 1) {
@@ -1836,54 +1869,64 @@ function togglePause() {
   }
 }
 
-// Joystick — zero-latency: track by touch ID, write input + knob transform immediately
-// No rAF batching, no smoothing — translate3d is compositor-only so direct writes are fine
+// Joystick — minimal-latency using Pointer Events + setPointerCapture.
+// Geometry is cached on layout changes (not per-touch), and input objects are
+// reused to avoid GC allocations in the hot path.
 function setupJoystick(areaId, knobId, pKey) {
   const area = document.getElementById(areaId);
   const knob = document.getElementById(knobId);
   if (!area || !knob) return;
   let centerX = 0, centerY = 0, maxD = 22, halfKnob = 12;
-  let activeId = null;
+  let active = false;
+  // Pre-allocate input object — mutated in place, never recreated
+  const inputObj = { dx: 0, dy: 0 };
   // Detect CSS rotation on the panel to counter-rotate knob visuals
   let cosR = 1, sinR = 0;
-  function detectRotation() {
-    const panel = area.closest('.mobile-panel');
-    if (!panel) { cosR = 1; sinR = 0; return; }
-    const st = getComputedStyle(panel).transform;
-    if (!st || st === 'none') { cosR = 1; sinR = 0; return; }
-    // matrix(a, b, c, d, tx, ty) — a=cos, b=sin of the rotation
-    const m = st.match(/matrix\(([^)]+)\)/);
-    if (m) {
-      const v = m[1].split(',').map(Number);
-      // Counter-rotate: negate the angle → cos stays, sin negates
-      cosR = v[0]; sinR = -v[1];
-    }
-  }
 
-  function onStart(e) {
-    audio.init(); audio.resume();
-    const t = e.changedTouches[0];
-    if (!t) return;
-    activeId = t.identifier;
-    detectRotation();
+  function cacheGeometry() {
     const rect = area.getBoundingClientRect();
     centerX = rect.left + rect.width / 2;
     centerY = rect.top + rect.height / 2;
     maxD = Math.max(22, rect.width * 0.4);
     halfKnob = knob.offsetWidth / 2;
-    processTouch(t);
-  }
-  function onMove(e) {
-    for (let i = 0; i < e.changedTouches.length; i++) {
-      if (e.changedTouches[i].identifier === activeId) {
-        processTouch(e.changedTouches[i]);
-        return;
-      }
+    // Detect panel rotation
+    const panel = area.closest('.mobile-panel');
+    if (!panel) { cosR = 1; sinR = 0; return; }
+    const st = getComputedStyle(panel).transform;
+    if (!st || st === 'none') { cosR = 1; sinR = 0; return; }
+    const m = st.match(/matrix\(([^)]+)\)/);
+    if (m) {
+      const v = m[1].split(',').map(Number);
+      cosR = v[0]; sinR = -v[1];
     }
   }
-  function processTouch(t) {
+
+  // Cache geometry on layout changes instead of every pointer-down
+  const layoutObserver = new ResizeObserver(cacheGeometry);
+  layoutObserver.observe(area);
+  window.addEventListener('orientationchange', () => setTimeout(cacheGeometry, 100));
+  // Initial cache after first layout
+  requestAnimationFrame(cacheGeometry);
+
+  function onDown(e) {
+    if (active) return; // already tracking a pointer
+    active = true;
+    area.setPointerCapture(e.pointerId);
+    audio.init(); audio.resume();
+    // Refresh geometry on down (cheap since ResizeObserver keeps it warm,
+    // but handles scroll offset changes)
+    const rect = area.getBoundingClientRect();
+    centerX = rect.left + rect.width / 2;
+    centerY = rect.top + rect.height / 2;
+    processPointer(e);
+  }
+  function onMove(e) {
+    if (!active) return;
+    processPointer(e);
+  }
+  function processPointer(e) {
     // Screen-space deltas
-    const sdx = t.clientX - centerX, sdy = t.clientY - centerY;
+    const sdx = e.clientX - centerX, sdy = e.clientY - centerY;
     // Counter-rotate screen deltas into panel's local coordinate space
     const ldx = sdx * cosR - sdy * sinR, ldy = sdx * sinR + sdy * cosR;
     // Clamp in local space (for knob visual)
@@ -1893,34 +1936,35 @@ function setupJoystick(areaId, knobId, pKey) {
     // Game input uses screen-space deltas (player movement is in screen orientation)
     const gx = Math.max(-maxD, Math.min(maxD, sdx));
     const gy = Math.max(-maxD, Math.min(maxD, sdy));
-    joystickInput[pKey] = { dx: gx / maxD, dy: gy / maxD };
+    inputObj.dx = gx / maxD;
+    inputObj.dy = gy / maxD;
+    joystickInput[pKey] = inputObj;
   }
-  function onEnd(e) {
-    for (let i = 0; i < e.changedTouches.length; i++) {
-      if (e.changedTouches[i].identifier === activeId) {
-        activeId = null;
-        joystickInput[pKey] = null;
-        knob.style.transform = 'translate(-50%,-50%)';
-        return;
-      }
-    }
+  function onUp() {
+    active = false;
+    joystickInput[pKey] = null;
+    knob.style.transform = 'translate(-50%,-50%)';
   }
-  area.addEventListener('touchstart', onStart, { passive: true });
-  area.addEventListener('touchmove', onMove, { passive: true });
-  area.addEventListener('touchend', onEnd, { passive: true });
-  area.addEventListener('touchcancel', onEnd, { passive: true });
+  area.addEventListener('pointerdown', onDown);
+  area.addEventListener('pointermove', onMove);
+  area.addEventListener('pointerup', onUp);
+  area.addEventListener('pointercancel', onUp);
+  // Prevent touch-based scrolling/zooming on the joystick area
+  area.style.touchAction = 'none';
 }
 
 function setupRotateBtn(btnId, key) {
   const btn = document.getElementById(btnId);
   if (!btn) return;
-  btn.addEventListener('touchstart', e => {
+  btn.style.touchAction = 'none';
+  btn.addEventListener('pointerdown', e => {
     e.stopPropagation();
+    btn.setPointerCapture(e.pointerId);
     mobileRotate[key] = true; btn.classList.add('pressed');
-  }, { passive: true });
-  const up = e => { mobileRotate[key] = false; btn.classList.remove('pressed'); };
-  btn.addEventListener('touchend', up, { passive: true });
-  btn.addEventListener('touchcancel', up, { passive: true });
+  });
+  const up = () => { mobileRotate[key] = false; btn.classList.remove('pressed'); };
+  btn.addEventListener('pointerup', up);
+  btn.addEventListener('pointercancel', up);
 }
 
 // ==================== KEYBINDING UI ====================
@@ -2349,7 +2393,8 @@ function startGame() {
   };
 
   powerups = []; activeEffects = { day: {}, night: {} };
-  particles = []; ballTrails = []; screenShake = { intensity: 0 };
+  particles = []; ballTrails = []; _trailPool = []; screenShake = { intensity: 0 };
+  _prevDayScore = -1; _prevNightScore = -1; _prevDayPct = -1; _prevShowBar = null;
   teleportState = { p1: { holdFrames: 0, remaining: TELEPORT_MAX }, p2: { holdFrames: 0, remaining: TELEPORT_MAX } };
   dayScore = TOTAL_SQUARES / 2; nightScore = TOTAL_SQUARES / 2;
   lastSpawn = { day: 0, night: 0 };
@@ -2434,14 +2479,7 @@ if (fsBtn) {
   const updateFsEvents = ['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange'];
   updateFsEvents.forEach(evt => document.addEventListener(evt, updateFsIcon));
 
-  // Gesture blocking: CSS touch-action:none on html/body handles most browsers natively.
-  // We attach a passive listener here just in case, but rely heavily on CSS.
-  const gameWrapper = document.getElementById('game-wrapper');
-  for (const el of [canvas, gameWrapper]) {
-    el.addEventListener('touchmove', e => {
-      // Intentionally passive to avoid input lag.
-    }, { passive: true });
-  }
+  // Gesture blocking is handled by CSS touch-action:none on html/body.
 }
 
 requestAnimationFrame(gameLoop);
