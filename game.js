@@ -1603,39 +1603,26 @@ function drawPowerupIcon(cx, cy, type, size) {
   }
 }
 
-// Pre-allocated ImageData + typed arrays for fast square rendering
-const _gridImgData = ctx.createImageData(CANVAS_SIZE, CANVAS_SIZE);
-const _gridBuf32 = new Uint32Array(_gridImgData.data.buffer);
-// Pre-compute packed ABGR pixel values for each team color (little-endian)
-function _packColor(hex) {
-  const n = parseInt(hex.slice(1), 16);
-  const r = (n >> 16) & 0xFF, g = (n >> 8) & 0xFF, b = n & 0xFF;
-  return (0xFF << 24) | (b << 16) | (g << 8) | r; // ABGR for little-endian
-}
-let _dayPacked = _packColor(DAY_COLOR);
-let _nightPacked = _packColor(NIGHT_COLOR);
-
+// Squares: fill day as background, then batch-path all night cells into a single fill.
+// Two fillStyle assignments per frame + one batched path — stays on the GPU path,
+// unlike putImageData which can force canvas into software mode on mobile GPUs.
 function renderSquares() {
-  const buf = _gridBuf32;
   const sq = SQUARE_SIZE;
-  const w = CANVAS_SIZE;
+  ctx.fillStyle = DAY_COLOR;
+  ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  ctx.fillStyle = NIGHT_COLOR;
+  ctx.beginPath();
   for (let i = 0; i < NUM_SQUARES; i++) {
     const col = squares[i];
-    const px0 = i * sq;
-    const px1 = px0 + sq;
+    const x = i * sq;
     for (let j = 0; j < NUM_SQUARES; j++) {
-      const packed = col[j] === DAY_COLOR ? _dayPacked : _nightPacked;
-      const py0 = j * sq;
-      for (let y = py0, yEnd = py0 + sq; y < yEnd; y++) {
-        buf.fill(packed, y * w + px0, y * w + px1); // native fill — ~5x faster than JS loop
-      }
+      if (col[j] === NIGHT_COLOR) ctx.rect(x, j * sq, sq, sq);
     }
   }
-  ctx.putImageData(_gridImgData, 0, 0);
+  ctx.fill();
 }
 
 function render(alpha = 1) {
-  // Squares — bulk pixel write via ImageData (putImageData ignores transforms, so draw before shake)
   renderSquares();
 
   ctx.save();
