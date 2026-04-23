@@ -4,7 +4,7 @@ A full multiplayer evolution of the original Pong Wars — the eternal battle be
 
 **[Play Now](https://mayerwin.github.io/pong-wars-reloaded/)**
 
-https://github.com/vnglst/pong-wars/assets/3457693/4eae12fa-bdc1-49ee-8b39-c94deb7cb2c8
+https://github.com/user-attachments/assets/4446a03f-4b24-45d7-b49c-f2209feca44b
 
 ## How to Play
 
