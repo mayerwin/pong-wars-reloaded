@@ -85,6 +85,7 @@ Access settings via the **gear icon** (⚙) during gameplay, or from the main me
 
 ### Sound
 - **Sound On/Off**: master sound toggle
+- **Menu Music On/Off**: original background music in menus, with a remembered preference. Browsers may require a click or key press before audio starts.
 - **Volume**: adjustable slider (0-100%)
 
 ### Visual Effects
@@ -139,6 +140,8 @@ npx serve
 ```
 
 Open up the link and you're ready to start.
+
+Run the automated tests with `node --test tests/*.test.cjs android/tests/*.test.cjs`. Android build and release instructions are in [android/README.md](android/README.md).
 
 ## Credits
 

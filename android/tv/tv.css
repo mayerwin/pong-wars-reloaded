@@ -1,0 +1,146 @@
+/* Loaded only in the packaged Android host / explicit TV preview. */
+body.pong-tv {
+  --tv-board-size: min(calc(92vh - max(4px, .7vh) - .7vh), 66vw);
+  --tv-side-width: calc((90vw - var(--tv-board-size)) / 2 - 2vw);
+  background: #101f29; color: #e3efe9; font-family: 'Trebuchet MS', sans-serif;
+}
+/* Android TV often uses a 360/480 CSS-pixel viewport even on a 720/1080 TV.
+   Own the complete game layout here: the web game's compact-landscape and
+   touch-screen rules otherwise replace the center HUD with hidden side bars.
+   The nested IDs intentionally outrank those !important web media rules. */
+body.pong-tv #game-wrapper {
+  display: flex !important; flex-flow: column nowrap !important;
+  align-items: center !important; justify-content: center !important;
+  width: 100% !important; height: 100vh !important;
+  padding: 4vh 5vw !important; gap: 0 !important;
+}
+body.pong-tv #game-wrapper #container {
+  display: flex !important; flex-flow: column nowrap !important;
+  align-items: center !important; justify-content: flex-start !important;
+  width: var(--tv-board-size) !important; max-width: none !important;
+  height: auto !important; min-height: 0 !important; flex: 0 0 auto !important;
+  margin: 0 !important; padding: 0 !important; order: 0 !important;
+}
+body.pong-tv #game-wrapper #container #pongCanvas {
+  display: block !important; flex: 0 0 auto !important;
+  width: var(--tv-board-size) !important; height: var(--tv-board-size) !important;
+  aspect-ratio: 1 / 1 !important; margin: 0 !important;
+  /* The engine sizes the backing bitmap for this display; preserve vector
+     antialiasing instead of applying nearest-neighbor scaling to the board. */
+  image-rendering: auto !important;
+  border-radius: 4px !important; box-shadow: 0 10px 70px #0006 !important;
+}
+body.pong-tv #game-wrapper #container #hud {
+  /* Scores and controls use the wide TV gutters, leaving the square board
+     the full safe height instead of reserving another footer below it. */
+  position: fixed; top: 40vh; left: 5vw; right: 5vw;
+  display: grid !important; grid-template-columns: var(--tv-side-width) minmax(0, 1fr) var(--tv-side-width);
+  align-items: start !important; width: auto !important;
+  margin: 0 !important; padding: 0 !important; gap: 0;
+  color: #e3efe9 !important; font-size: clamp(12px, 2vh, 23px);
+}
+body.pong-tv #game-wrapper #hud .team {
+  display: grid; grid-template-columns: auto auto; align-items: center;
+  justify-content: start; gap: .3vh .8vh; min-width: 0; grid-column: 1;
+}
+body.pong-tv #game-wrapper #hud .night-team { justify-content: end; grid-column: 3; grid-row: 1; }
+body.pong-tv #game-wrapper #hud .team-name { text-transform: uppercase; letter-spacing: .06em; }
+body.pong-tv #game-wrapper #hud .team-score { font-size: clamp(16px, 2.8vh, 32px); line-height: 1.15; }
+body.pong-tv #game-wrapper #hud .powerup-icons {
+  grid-column: 1 / -1; grid-row: 2; display: flex; flex-wrap: wrap;
+  min-height: clamp(14px, 2.5vh, 28px); gap: .35vh;
+}
+body.pong-tv #game-wrapper #hud .night-team .powerup-icons { justify-content: flex-end; }
+body.pong-tv #game-wrapper #hud .night-team .team-score,
+body.pong-tv #game-wrapper #hud .night-team .team-name { grid-row: 1; }
+body.pong-tv #game-wrapper #hud .powerup-icon {
+  min-width: clamp(14px, 2.5vh, 28px); height: clamp(14px, 2.5vh, 28px);
+  font-size: clamp(10px, 1.6vh, 18px); line-height: 1; padding: 0 .3vh;
+}
+body.pong-tv #game-wrapper #hud #timer-display {
+  position: fixed; top: 6vh; left: 5vw; width: var(--tv-side-width);
+  color: #e3efe9; font-size: clamp(16px, 2.8vh, 32px); line-height: 1.15;
+  min-width: 0; text-align: left; font-variant-numeric: tabular-nums;
+}
+body.pong-tv #game-wrapper #hud #timer-display::before {
+  content: 'TIME'; display: block; margin-bottom: .7vh;
+  font-size: clamp(10px, 1.5vh, 18px); letter-spacing: .1em; color: #adbfca;
+}
+body.pong-tv #game-wrapper #hud #timer-display:empty { display: none; }
+body.pong-tv #game-wrapper #container #progression-bar {
+  display: flex !important; width: 100% !important;
+  height: max(4px, .7vh) !important; flex: 0 0 auto !important;
+  margin: .7vh 0 0 !important;
+}
+/* Preserve the engine's progression-bar setting and timed-only mode. */
+body.pong-tv #game-wrapper #container #progression-bar[style*="display: none"],
+body.pong-tv:not(.game-active) #game-wrapper #container #progression-bar,
+body.pong-tv:not(.game-active) #game-wrapper #container #hud { display: none !important; }
+.pong-tv .mobile-panel, .pong-tv .side-hud-bar, .pong-tv #fullscreen-btn,
+.pong-tv #pause-btn, .pong-tv #gear-btn, .pong-tv #container > .overlay { display: none !important; }
+.pong-tv #made { display: none; }
+.pong-tv #tv-root { position: fixed; inset: 0; z-index: 500; }
+.pong-tv #tv-root:empty { pointer-events: none; }
+.tv-screen { position: absolute; inset: 0; padding: 5vh 6vw; display: flex; flex-direction: column; justify-content: center; background: #101f29f7; }
+.tv-screen h1, .tv-screen h2, .tv-screen p { margin: 0; }
+.tv-screen h1 { font-size: clamp(32px, 6.7vh, 76px); line-height: .97; letter-spacing: -.045em; font-weight: 900; }
+.tv-screen h1 span { display: block; color: #5ee2cd; letter-spacing: .12em; font-size: .56em; margin-top: .4em; }
+.tv-screen h2 { font-size: clamp(27px, 4.5vh, 54px); line-height: 1.1; }
+.tv-kicker { text-transform: uppercase; letter-spacing: .23em; color: #5ee2cd; font-size: clamp(11px, 1.7vh, 20px); margin-bottom: 2vh !important; font-weight: bold; }
+.tv-copy { color: #adbfca; font-size: clamp(15px, 2.3vh, 27px); line-height: 1.5; margin-top: 2vh !important; max-width: 57em; }
+.tv-home { display: grid; grid-template-columns: 1fr 1fr; gap: 7vw; align-items: center; }
+.tv-art { display: grid; grid-template-columns: 1fr 1fr; width: 21vh; height: 21vh; transform: rotate(-9deg); margin-bottom: 4vh; border: 1px solid #d9e8e366; }
+.tv-art span { position: relative; background: #d9e8e3; }
+.tv-art span + span { background: #172b36; }
+.tv-art span::after { content: ''; position: absolute; width: 1.5vh; height: 9vh; background: #172b36; top: 5vh; left: 4vh; }
+.tv-art span + span::after { background: #d9e8e3; top: 8vh; }
+.tv-actions { display: flex; flex-direction: column; gap: 1.3vh; margin-top: 3vh; }
+.tv-screen button { text-align: left; padding: 1.8vh 2vw; background: #203641; border: 2px solid transparent; border-radius: 5px; color: #e3efe9; font: inherit; font-size: clamp(17px, 2.5vh, 29px); cursor: pointer; min-height: 7vh; }
+.tv-screen button small { display: block; color: #adbfca; font-size: .66em; margin-top: .4em; }
+.tv-screen button:focus { outline: none; background: #d9e8e3; color: #101f29; border-color: #5ee2cd; box-shadow: 0 0 0 4px #5ee2cd33; }
+.tv-screen button:focus small { color: #304b58; }
+.tv-screen button:disabled { opacity: .4; }
+.tv-row { display: flex; gap: 1.3vw; }
+.tv-row button { flex: 1; }
+.tv-footer { position: absolute; bottom: 3vh; left: 6vw; right: 6vw; color: #8fa9b8; font-size: clamp(12px, 1.7vh, 20px); }
+.tv-join { display: grid; grid-template-columns: 1fr 1fr; gap: 2vw; margin: 4vh 0 2vh; }
+.tv-slot { padding: 3vh 2vw; border: 1px solid #45616e; background: #182d38; min-height: 20vh; }
+.tv-slot strong { display: block; font-size: 3vh; margin-bottom: 2vh; color: #5ee2cd; }
+.tv-slot p { font-size: 2.2vh; line-height: 1.5; }
+/* Mapping summaries share the screen with the explicit Start / Save actions.
+   Keep all eight rows readable even on a 360 CSS-pixel-high TV viewport. */
+.tv-lobby { justify-content: flex-start; padding: 4vh 5vw 8vh; }
+.tv-lobby .tv-kicker { font-size: clamp(11px, 1.7vh, 18px); margin-bottom: .7vh !important; }
+.tv-lobby h2 { font-size: clamp(23px, 4vh, 44px); }
+.tv-lobby > .tv-copy { font-size: clamp(12px, 1.8vh, 21px); line-height: 1.35; margin-top: .8vh !important; }
+.tv-lobby .tv-join { margin: 1.5vh 0 .8vh; gap: 2vw; min-height: 0; }
+.tv-lobby .tv-slot { padding: 1.3vh 1.3vw; min-height: 0; min-width: 0; }
+.tv-lobby .tv-slot strong { font-size: clamp(13px, 2.2vh, 24px); line-height: 1.2; margin-bottom: .5vh; }
+.tv-lobby .tv-slot > p { font-size: clamp(11px, 1.6vh, 19px); line-height: 1.25; overflow-wrap: anywhere; }
+.tv-bindings { margin: 1vh 0; display: grid; gap: .35vh; font-size: clamp(12px, 1.7vh, 19px); line-height: 1.2; }
+.tv-bindings > div { display: grid; grid-template-columns: minmax(0, .42fr) minmax(0, .58fr); gap: 1vw; }
+.tv-bindings dt { color: #adbfca; }
+.tv-bindings dd { margin: 0; color: #e3efe9; font-weight: bold; overflow-wrap: anywhere; }
+.tv-lobby button { min-height: 0; padding: .8vh 1.3vw; font-size: clamp(13px, 2vh, 22px); line-height: 1.2; }
+.tv-lobby > .tv-actions { margin-top: .7vh; }
+.tv-lobby > .tv-notice:empty { display: none; }
+.tv-device-review { width: min(76vw, 1000px); margin: 0 auto; }
+.tv-device-review .tv-kicker { overflow-wrap: anywhere; }
+.tv-device-review .tv-bindings { font-size: clamp(13px, 2vh, 23px); margin: 2vh 0; gap: .6vh; }
+.tv-device-review .tv-actions { display: grid; grid-template-columns: 1fr 1fr; margin-top: 2vh; }
+.tv-device-review button { font-size: clamp(14px, 2.3vh, 27px); padding: 1.4vh 1.5vw; }
+.tv-settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.3vh 1.3vw; }
+.tv-settings > .tv-row { display: contents; }
+.tv-calibration { display: grid; grid-template-columns: 1fr 1fr; gap: 5vw; align-items: center; }
+.tv-demo { border: 1px solid #45616e; background: linear-gradient(90deg, #d9e8e3 50%, #172b36 50%); height: 45vh; position: relative; overflow: hidden; }
+.tv-racket { position: absolute; background: #5ee2cd; width: 1.6vh; height: 13vh; left: 30%; top: 35%; box-shadow: 0 0 0 2px #101f29; }
+.tv-checks { display: flex; gap: .7vw; margin-top: 3vh; }
+.tv-checks span { display: grid; place-items: center; width: 4vh; height: 4vh; border: 1px solid #45616e; color: #8fa9b8; font-size: 2vh; }
+.tv-checks .done { background: #5ee2cd; color: #101f29; }
+.tv-progress { margin-top: 3vh; height: 1vh; background: #29424f; }
+.tv-progress > div { height: 100%; background: #5ee2cd; width: 0; }
+.tv-hints { position: fixed; bottom: 4vh; left: 5vw; right: 5vw; pointer-events: none; display: flex; justify-content: space-between; align-items: flex-end; font-size: clamp(12px, 1.8vh, 22px); line-height: 1.4; color: #b5ccc9; z-index: 400; }
+.tv-hints span { width: var(--tv-side-width); overflow-wrap: anywhere; }
+.tv-hints span + span { text-align: right; }
+.tv-badge { position: fixed; top: 4vh; left: 5vw; color: #5ee2cd; letter-spacing: .12em; font-size: 1.8vh; }
+@media (max-aspect-ratio: 4/3) { .tv-home { gap: 3vw; } .tv-art { display: none; } }

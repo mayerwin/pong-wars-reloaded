@@ -1,1 +1,15 @@
 .claude/settings.local.json
+
+# Android generated outputs and per-machine configuration
+android/.gradle/
+android/**/build/
+android/local.properties
+android/.idea/
+android/*.iml
+android/publishing/local-config.ps1
+android/publishing/releases/
+
+# Private signing keys, Play API credentials, and release counters
+android/publishing/secrets/
+*.keystore
+*.jks

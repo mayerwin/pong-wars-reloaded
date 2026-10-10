@@ -1,0 +1,124 @@
+plugins {
+    id 'com.android.application'
+}
+
+def versions = new Properties()
+rootProject.file('version.properties').withInputStream { versions.load(it) }
+def secretsDir = rootProject.file('publishing/secrets')
+def signingProperties = new Properties()
+def signingFile = new File(secretsDir, 'keystore.properties')
+if (signingFile.exists()) signingFile.withInputStream { signingProperties.load(it) }
+def hasPlayKey = signingProperties.getProperty('storeFile') != null
+def sideloadProperties = new Properties()
+def sideloadPropertiesFile = new File(secretsDir, 'sideload.properties')
+if (sideloadPropertiesFile.exists()) sideloadPropertiesFile.withInputStream { sideloadProperties.load(it) }
+def sideloadKey = new File(secretsDir, sideloadProperties.getProperty('storeFile', 'sideload.keystore'))
+def hasSideloadKey = sideloadKey.exists() && sideloadProperties.getProperty('storePassword') != null
+def generatedWebAssets = layout.buildDirectory.dir('generated/gameAssets')
+
+// Package the single, shared web game. Only the generated index adds the TV adapter.
+// Never edit copies under app/build: change the root game or android/tv instead.
+tasks.register('syncGameAssets', Sync) {
+    from(rootProject.projectDir.parentFile) {
+        include 'index.html', 'game.js', 'menu-music.js', 'style.css', 'icon.svg', 'manifest.json', 'LICENSE'
+        filesMatching('index.html') {
+            filter { String line ->
+                line.replace('</head>', '<link rel="stylesheet" href="tv/tv.css"></head>')
+                    .replace('</body>', '<script src="tv/input.js"></script><script src="tv/tv.js"></script></body>')
+            }
+        }
+    }
+    from(rootProject.file('tv')) { into 'tv'; include '*.js', '*.css' }
+    into generatedWebAssets
+}
+
+android {
+    namespace 'com.github.pongwarsreloaded'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'com.github.pongwarsreloaded'
+        minSdk 24
+        targetSdk 36
+        versionCode Integer.parseInt(project.findProperty('versionCode') ?: versions.getProperty('versionCode'))
+        versionName project.findProperty('versionName') ?: versions.getProperty('versionName')
+    }
+
+    signingConfigs {
+        if (hasSideloadKey) {
+            sideload {
+                storeFile sideloadKey
+                storePassword sideloadProperties.getProperty('storePassword')
+                keyAlias sideloadProperties.getProperty('keyAlias')
+                keyPassword sideloadProperties.getProperty('keyPassword')
+                storeType 'PKCS12'
+            }
+        }
+        if (hasPlayKey) {
+            play {
+                storeFile new File(secretsDir, signingProperties.getProperty('storeFile'))
+                storePassword signingProperties.getProperty('storePassword')
+                keyAlias signingProperties.getProperty('keyAlias')
+                keyPassword signingProperties.getProperty('keyPassword')
+            }
+        }
+    }
+    flavorDimensions 'distribution'
+    productFlavors {
+        sideload {
+            dimension 'distribution'
+            applicationIdSuffix '.sideload'
+            if (hasSideloadKey) signingConfig signingConfigs.sideload
+        }
+        play {
+            dimension 'distribution'
+            if (hasPlayKey) signingConfig signingConfigs.play
+        }
+    }
+    buildTypes {
+        debug { debuggable true }
+        release {
+            minifyEnabled false
+            shrinkResources false
+        }
+    }
+    sourceSets { main.assets.srcDir generatedWebAssets }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    lint { abortOnError true }
+}
+
+tasks.named('preBuild').configure { dependsOn 'syncGameAssets' }
+
+// Never silently create an unsigned release or change its signing identity.
+gradle.taskGraph.whenReady { graph ->
+    if (graph.allTasks.any { it.path == ':app:validateSigningPlayRelease' || it.path == ':app:packagePlayRelease' || it.path == ':app:signPlayReleaseBundle' } && !hasPlayKey) {
+        throw new GradleException('Play signing key missing. Run android/publishing/1-generate-upload-keystore.ps1 first.')
+    }
+    if (graph.allTasks.any { it.path == ':app:validateSigningSideloadRelease' || it.path == ':app:packageSideloadRelease' || it.path == ':app:signSideloadReleaseBundle' } && !hasSideloadKey) {
+        throw new GradleException('Sideload signing key missing. Run android/publishing/6-install-on-tv.ps1 or android/publishing/LAUNCH.ps1 first.')
+    }
+}
+
+dependencies {
+    implementation 'androidx.webkit:webkit:1.14.0'
+    testImplementation 'junit:junit:4.13.2'
+}
+
+// A shared, already-authorized service account can be referenced without copying its key.
+def serviceAccountPath = System.getenv('PLAY_SERVICE_ACCOUNT_FILE')
+def serviceAccount = serviceAccountPath ? file(serviceAccountPath) : new File(secretsDir, 'play-service-account.json')
+if (hasPlayKey && serviceAccount.exists()) {
+    apply plugin: 'com.github.triplet.play'
+    play {
+        serviceAccountCredentials.set(serviceAccount)
+        track.set(System.getenv('PLAY_TRACK') ?: 'internal')
+        releaseStatus.set(com.github.triplet.gradle.androidpublisher.ReleaseStatus.valueOf((System.getenv('PLAY_RELEASE_STATUS') ?: 'DRAFT').toUpperCase()))
+        defaultToAppBundles.set(true)
+        commit.set(true)
+        resolutionStrategy.set(com.github.triplet.gradle.androidpublisher.ResolutionStrategy.FAIL)
+    }
+    android.playConfigs { sideload { enabled.set(false) } }
+}

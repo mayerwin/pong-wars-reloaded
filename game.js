@@ -60,6 +60,33 @@ applyTouchMode();
 // ==================== DOM REFS ====================
 const canvas = document.getElementById("pongCanvas");
 const ctx = canvas.getContext("2d");
+let canvasResolutionDirty = true;
+let canvasPixelRatio = 0;
+
+// Keep physics in the original 800-unit world, but draw at the display's
+// physical pixel density. Only layout changes may resize the backing bitmap.
+function syncCanvasResolution() {
+  const ratio = window.devicePixelRatio;
+  const pixelRatio = Number.isFinite(ratio) && ratio > 0 ? ratio : 1;
+  if (!canvasResolutionDirty && canvasPixelRatio === pixelRatio) return;
+  const { width, height } = canvas.getBoundingClientRect();
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
+  const pixelWidth = Math.max(1, Math.ceil(width * pixelRatio));
+  const pixelHeight = Math.max(1, Math.ceil(height * pixelRatio));
+  if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
+  if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
+  canvasPixelRatio = pixelRatio;
+  canvasResolutionDirty = false;
+}
+
+function markCanvasResolutionDirty() { canvasResolutionDirty = true; }
+window.addEventListener('resize', markCanvasResolutionDirty);
+window.addEventListener('load', markCanvasResolutionDirty);
+['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange']
+  .forEach(event => document.addEventListener(event, markCanvasResolutionDirty));
+if (window.ResizeObserver) {
+  new window.ResizeObserver(markCanvasResolutionDirty).observe(canvas);
+}
 const dayScoreEl = document.getElementById("day-score");
 const nightScoreEl = document.getElementById("night-score");
 const timerEl = document.getElementById("timer-display");
@@ -79,6 +106,7 @@ const DEFAULT_ADV = {
   gridEffect: false,
   particles: true,
   soundEnabled: true,
+  menuMusicEnabled: true,
   soundVolume: 70,
   powerupFrequency: 15,
   powerupDuration: 40,
@@ -150,6 +178,7 @@ function saveSettings() {
     for (const k of Object.keys(DEFAULT_ADV)) obj[k] = settings[k];
     localStorage.setItem('pongWarsSettings', JSON.stringify(obj));
   } catch (e) { }
+  syncWebMenuMusic();
 }
 
 // ==================== AUDIO SYSTEM ====================
@@ -233,6 +262,7 @@ const audio = {
 const AI_SKILL = { easy: 0.15, medium: 0.45, hard: 0.75, hardest: 1.0 };
 
 let game = { state: 'menu', timeRemaining: 0, tickCount: 0, winner: null };
+let gameoverTimeout = null;
 let squares = [];
 let balls = [];
 let player1, player2;
@@ -259,6 +289,50 @@ let teleportState = {
 const keys = {};
 let joystickInput = { p1: null, p2: null };
 let mobileRotate = { p1ccw: false, p1cw: false, p2ccw: false, p2cw: false };
+// Optional host input, kept separate from the web keyboard/touch bindings.
+let externalControls = false;
+// The TV host owns its own music lifecycle. Wait until page load (or the first
+// gesture), after host scripts have run, before creating the website instance.
+let webMenuMusic = null;
+let webMusicReady = false;
+let webPageBlurred = false;
+function syncWebMenuMusic() {
+  if (externalControls || window.AndroidHost) {
+    if (webMenuMusic) webMenuMusic.dispose();
+    webMenuMusic = null;
+    return;
+  }
+  if (!webMusicReady || !window.PongMenuMusic) return;
+  if (!webMenuMusic) webMenuMusic = new window.PongMenuMusic();
+  webMenuMusic.setEnabled(settings.soundEnabled && settings.menuMusicEnabled);
+  webMenuMusic.setVolume(settings.soundVolume / 100);
+  webMenuMusic.setActive(!document.hidden && !webPageBlurred &&
+    (game.state === 'menu' || game.state === 'gameover'));
+}
+function unlockWebMenuMusic() {
+  webMusicReady = true;
+  syncWebMenuMusic();
+  if (webMenuMusic) webMenuMusic.unlock();
+}
+function suspendWebMenuMusic() {
+  if (webMenuMusic) webMenuMusic.suspend();
+}
+function resumeWebMenuMusic() {
+  syncWebMenuMusic();
+  if (webMenuMusic && !document.hidden && !webPageBlurred) webMenuMusic.resume();
+}
+window.addEventListener('load', () => { webMusicReady = true; syncWebMenuMusic(); });
+document.addEventListener('pointerdown', unlockWebMenuMusic);
+document.addEventListener('keydown', unlockWebMenuMusic);
+window.addEventListener('blur', () => { webPageBlurred = true; suspendWebMenuMusic(); });
+window.addEventListener('focus', () => { webPageBlurred = false; resumeWebMenuMusic(); });
+window.addEventListener('pagehide', () => { webPageBlurred = true; suspendWebMenuMusic(); });
+window.addEventListener('pageshow', () => { webPageBlurred = false; resumeWebMenuMusic(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) suspendWebMenuMusic(); else resumeWebMenuMusic();
+});
+function neutralInput() { return { x: 0, y: 0, rotateLeft: false, rotateRight: false, teleport: false }; }
+let externalInput = { p1: neutralInput(), p2: neutralInput() };
 const ROT_SNAP = 45 * Math.PI / 180; // 45 degrees
 const ROT_HOLD_THRESHOLD = 10; // frames before switching to fine rotation
 let rotHoldFrames = { p1L: 0, p1R: 0, p2L: 0, p2R: 0 };
@@ -403,7 +477,8 @@ function canMoveTo(player, cx, cy) {
 
 function movePlayer(player, targetCx, targetCy) {
   // Try full distance first (fast path), fall back to per-pixel on collision
-  const fullDx = Math.round(targetCx - player.cx);
+  // Preserve subpixel movement for gentle analog stick input.
+  const fullDx = targetCx - player.cx;
   if (fullDx !== 0) {
     if (canMoveTo(player, player.cx + fullDx, player.cy)) {
       player.cx += fullDx;
@@ -411,13 +486,14 @@ function movePlayer(player, targetCx, targetCy) {
       const dx = Math.sign(fullDx);
       const steps = Math.min(Math.abs(fullDx), player.speed);
       for (let s = 0; s < steps; s++) {
-        if (canMoveTo(player, player.cx + dx, player.cy)) {
-          player.cx += dx;
+        const step = dx * Math.min(1, steps - s);
+        if (canMoveTo(player, player.cx + step, player.cy)) {
+          player.cx += step;
         } else break;
       }
     }
   }
-  const fullDy = Math.round(targetCy - player.cy);
+  const fullDy = targetCy - player.cy;
   if (fullDy !== 0) {
     if (canMoveTo(player, player.cx, player.cy + fullDy)) {
       player.cy += fullDy;
@@ -425,8 +501,9 @@ function movePlayer(player, targetCx, targetCy) {
       const dy = Math.sign(fullDy);
       const steps = Math.min(Math.abs(fullDy), player.speed);
       for (let s = 0; s < steps; s++) {
-        if (canMoveTo(player, player.cx, player.cy + dy)) {
-          player.cy += dy;
+        const step = dy * Math.min(1, steps - s);
+        if (canMoveTo(player, player.cx, player.cy + step)) {
+          player.cy += step;
         } else break;
       }
     }
@@ -453,7 +530,9 @@ function resetRotation(player) {
   }
 }
 
-function applyGridSnap(player) {
+function applyGridSnap(player, pKey) {
+  // Snapping every tick would swallow slow analog movement near grid lines.
+  if (externalControls && (externalInput[pKey].x || externalInput[pKey].y)) return;
   if (Math.abs(player.angle) > 0.01) return;
   const leftEdge = player.cx - player.width / 2;
   const mod = ((leftEdge % SQUARE_SIZE) + SQUARE_SIZE) % SQUARE_SIZE;
@@ -486,7 +565,7 @@ function updatePlayers() {
   } else {
     updatePlayerInput(player1, 'p1', keyBindings.p1);
   }
-  applyGridSnap(player1);
+  applyGridSnap(player1, 'p1');
   pushBallsFromRacket(player1);
 
   if (isPlayerStuck(player2)) rescuePlayer(player2);
@@ -495,7 +574,7 @@ function updatePlayers() {
   } else {
     updatePlayerInput(player2, 'p2', keyBindings.p2);
   }
-  applyGridSnap(player2);
+  applyGridSnap(player2, 'p2');
   pushBallsFromRacket(player2);
 
   // Compute racket velocity for power shot
@@ -520,12 +599,9 @@ function chargeTeleport(player, pKey, charging) {
 }
 
 function updatePlayerInput(player, pKey, binds) {
-  const rL = keys[binds.rotL];
-  const rR = keys[binds.rotR];
-  const mrL = mobileRotate[pKey + 'ccw'];
-  const mrR = mobileRotate[pKey + 'cw'];
-  const rotLeft = rL || mrL;
-  const rotRight = rR || mrR;
+  const input = externalControls ? externalInput[pKey] : null;
+  const rotLeft = input ? input.rotateLeft : keys[binds.rotL] || mobileRotate[pKey + 'ccw'];
+  const rotRight = input ? input.rotateRight : keys[binds.rotR] || mobileRotate[pKey + 'cw'];
 
   const holdKeyL = pKey + 'L', holdKeyR = pKey + 'R';
   if (rotLeft && rotRight) {
@@ -548,7 +624,12 @@ function updatePlayerInput(player, pKey, binds) {
   } else {
     rotHoldFrames[holdKeyL] = 0; rotHoldFrames[holdKeyR] = 0;
   }
-  chargeTeleport(player, pKey, rotLeft && rotRight);
+  chargeTeleport(player, pKey, (input && input.teleport) || (rotLeft && rotRight));
+  if (input) {
+    const magnitude = Math.max(1, Math.hypot(input.x, input.y));
+    movePlayer(player, player.cx + input.x / magnitude * player.speed, player.cy + input.y / magnitude * player.speed);
+    return;
+  }
   const ji = joystickInput[pKey];
   if (ji) {
     const mag = Math.sqrt(ji.dx * ji.dx + ji.dy * ji.dy);
@@ -560,7 +641,8 @@ function updatePlayerInput(player, pKey, binds) {
     const pressL = keys[binds.left], pressR = keys[binds.right];
     const kx = (pressL ? -1 : 0) + (pressR ? 1 : 0);
     const ky = (keys[binds.up] ? -1 : 0) + (keys[binds.down] ? 1 : 0);
-    if (kx || ky) movePlayer(player, player.cx + kx * player.speed, player.cy + ky * player.speed);
+    const magnitude = Math.max(1, Math.hypot(kx, ky));
+    if (kx || ky) movePlayer(player, player.cx + kx / magnitude * player.speed, player.cy + ky / magnitude * player.speed);
   }
 }
 
@@ -1436,7 +1518,9 @@ function checkWinCondition() {
 
 function triggerWin(winner, isDomination) {
   game.state = 'gameover';
+  syncWebMenuMusic();
   game.winner = winner;
+  clearGameInput();
   audio.playWin();
   if (settings.effectsEnabled && settings.particles) {
     const colors = winner === 'day' ? [DAY_COLOR, ACCENT, colorPalette.ArcticPowder]
@@ -1446,7 +1530,10 @@ function triggerWin(winner, isDomination) {
       particles.push(makeConfetti(CANVAS_SIZE * Math.random(), CANVAS_SIZE * 0.3 * Math.random(),
         colors[Math.floor(Math.random() * colors.length)]));
   }
-  setTimeout(() => {
+  clearTimeout(gameoverTimeout);
+  gameoverTimeout = setTimeout(() => {
+    gameoverTimeout = null;
+    if (game.state !== 'gameover') return;
     const dayPctRaw = dayScore / TOTAL_SQUARES * 100;
     const nightPctRaw = nightScore / TOTAL_SQUARES * 100;
     const dayR = Math.round(dayPctRaw), nightR = Math.round(nightPctRaw);
@@ -1454,7 +1541,7 @@ function triggerWin(winner, isDomination) {
     const titleEl = document.getElementById('winner-text');
     titleEl.style.color = '#D9E8E3';
 
-    if (winner === 'draw' || (dayR === 50 && nightR === 50)) {
+    if (winner === 'draw') {
       titleEl.textContent = "IT'S A DRAW!";
       scoreEl.textContent = '';
     } else if (isDomination) {
@@ -1463,7 +1550,7 @@ function triggerWin(winner, isDomination) {
     } else {
       titleEl.textContent = `${winner.toUpperCase()} WINS!`;
       const winR = winner === 'day' ? dayR : nightR;
-      scoreEl.textContent = `${winR}% domination`;
+      scoreEl.textContent = `${winR}% territory (${dayScore} – ${nightScore})`;
     }
     document.getElementById('gameover').classList.remove('hidden');
   }, 1400);
@@ -1623,6 +1710,8 @@ function renderSquares() {
 }
 
 function render(alpha = 1) {
+  syncCanvasResolution();
+  ctx.setTransform(canvas.width / CANVAS_SIZE, 0, 0, canvas.height / CANVAS_SIZE, 0, 0);
   renderSquares();
 
   ctx.save();
@@ -1769,19 +1858,28 @@ function syncSideHudAlignment() {
 }
 
 // ==================== GAME LOOP ======================================
-let lastFrameTime = 0, accumulator = 0;
+let lastFrameTime = null, accumulator = 0;
 
 function gameLoop(timestamp) {
   requestAnimationFrame(gameLoop);
-  if (!lastFrameTime) lastFrameTime = timestamp;
-  const delta = Math.min(timestamp - lastFrameTime, 100);
+  if (lastFrameTime === null) lastFrameTime = timestamp;
+  const delta = Math.max(0, Math.min(timestamp - lastFrameTime, 100));
   lastFrameTime = timestamp;
 
-  if (game.state === 'gameover') { updateParticles(); render(1); return; }
+  if (game.state === 'gameover') {
+    accumulator += delta;
+    while (accumulator + 1e-7 >= TICK_MS) {
+      updateParticles();
+      accumulator = Math.max(0, accumulator - TICK_MS);
+    }
+    render(1);
+    return;
+  }
   if (game.state !== 'playing') return;
 
   accumulator += delta;
-  while (accumulator >= TICK_MS) {
+  while (accumulator + 1e-7 >= TICK_MS) {
+    accumulator = Math.max(0, accumulator - TICK_MS);
     // Record state for interpolation
     player1.oldX = player1.cx; player1.oldY = player1.cy; player1.oldAngle = player1.angle;
     player2.oldX = player2.cx; player2.oldY = player2.cy; player2.oldAngle = player2.angle;
@@ -1791,10 +1889,10 @@ function gameLoop(timestamp) {
     updatePlayers();
     updateBalls();
     updatePowerups();
+    updateParticles();
     updateScoreHUD();
     checkWinCondition();
     if (game.state !== 'playing') break;
-    accumulator -= TICK_MS;
   }
   // After physics: if a ball bounced this tick, start interpolation from the
   // wall so the ball visually touches the edge before moving away.
@@ -1804,8 +1902,7 @@ function gameLoop(timestamp) {
       b.oldY = b.bounceY;
     }
   }
-  updateParticles();
-  const alpha = accumulator / TICK_MS;
+  const alpha = Math.min(1, accumulator / TICK_MS);
   render(alpha);
   syncSideHudAlignment();
 }
@@ -1814,10 +1911,12 @@ function gameLoop(timestamp) {
 function normalizeKey(k) { return k.length === 1 ? k.toLowerCase() : k; }
 
 document.addEventListener('keydown', e => {
+  if (externalControls) return;
   const key = normalizeKey(e.key);
   keys[key] = true;
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(key)) e.preventDefault();
   if (listeningBtn) { handleKeyBindPress(e); return; }
+  if (e.repeat) return; // Held Escape/Enter must not repeatedly toggle menus.
   if (key === 'Escape') {
     if (game.state === 'playing' || game.state === 'paused') togglePause();
     else if (!document.getElementById('keybind-overlay').classList.contains('hidden')) closeKeybindUI();
@@ -1843,17 +1942,47 @@ document.addEventListener('keydown', e => {
     }
   }
 });
-document.addEventListener('keyup', e => { keys[normalizeKey(e.key)] = false; });
+document.addEventListener('keyup', e => { if (!externalControls) keys[normalizeKey(e.key)] = false; });
+
+function clearGameInput() {
+  for (const key of Object.keys(keys)) delete keys[key];
+  joystickInput.p1 = joystickInput.p2 = null;
+  for (const key of Object.keys(mobileRotate)) mobileRotate[key] = false;
+  for (const key of Object.keys(rotHoldFrames)) rotHoldFrames[key] = 0;
+  for (const key of ['p1', 'p2']) {
+    externalInput[key] = neutralInput();
+    teleportState[key].holdFrames = 0;
+  }
+  document.querySelectorAll('.rot-btn.pressed').forEach(btn => btn.classList.remove('pressed'));
+}
+
+function pauseGame() {
+  clearGameInput();
+  if (game.state !== 'playing') return;
+  game.state = 'paused';
+  syncWebMenuMusic();
+  accumulator = 0;
+  document.getElementById('pause-overlay').classList.remove('hidden');
+}
+
+function resumeGame() {
+  if (game.state !== 'paused') return;
+  clearGameInput();
+  game.state = 'playing';
+  syncWebMenuMusic();
+  lastFrameTime = null;
+  accumulator = 0;
+  document.getElementById('pause-overlay').classList.add('hidden');
+  document.getElementById('settings-overlay').classList.add('hidden');
+  audio.resume();
+}
+
+window.addEventListener('blur', pauseGame);
+document.addEventListener('visibilitychange', () => { if (document.hidden) pauseGame(); });
 
 function togglePause() {
-  if (game.state === 'playing') {
-    game.state = 'paused';
-    document.getElementById('pause-overlay').classList.remove('hidden');
-  } else if (game.state === 'paused') {
-    game.state = 'playing';
-    document.getElementById('pause-overlay').classList.add('hidden');
-    document.getElementById('settings-overlay').classList.add('hidden');
-  }
+  if (game.state === 'playing') pauseGame();
+  else if (game.state === 'paused') resumeGame();
 }
 
 // Joystick — minimal-latency using Pointer Events + setPointerCapture.
@@ -1896,6 +2025,7 @@ function setupJoystick(areaId, knobId, pKey) {
   requestAnimationFrame(cacheGeometry);
 
   function onDown(e) {
+    if (externalControls) return;
     if (active) return; // already tracking a pointer
     active = true;
     area.setPointerCapture(e.pointerId);
@@ -1908,7 +2038,7 @@ function setupJoystick(areaId, knobId, pKey) {
     processPointer(e);
   }
   function onMove(e) {
-    if (!active) return;
+    if (externalControls || !active) return;
     processPointer(e);
   }
   function processPointer(e) {
@@ -1936,6 +2066,8 @@ function setupJoystick(areaId, knobId, pKey) {
   area.addEventListener('pointermove', onMove);
   area.addEventListener('pointerup', onUp);
   area.addEventListener('pointercancel', onUp);
+  area.addEventListener('lostpointercapture', onUp);
+  window.addEventListener('blur', onUp);
   // Prevent touch-based scrolling/zooming on the joystick area
   area.style.touchAction = 'none';
 }
@@ -1945,6 +2077,7 @@ function setupRotateBtn(btnId, key) {
   if (!btn) return;
   btn.style.touchAction = 'none';
   btn.addEventListener('pointerdown', e => {
+    if (externalControls) return;
     e.stopPropagation();
     btn.setPointerCapture(e.pointerId);
     mobileRotate[key] = true; btn.classList.add('pressed');
@@ -1952,6 +2085,7 @@ function setupRotateBtn(btnId, key) {
   const up = () => { mobileRotate[key] = false; btn.classList.remove('pressed'); };
   btn.addEventListener('pointerup', up);
   btn.addEventListener('pointercancel', up);
+  btn.addEventListener('lostpointercapture', up);
 }
 
 // ==================== KEYBINDING UI ====================
@@ -2034,7 +2168,7 @@ function openSettings(from) {
   settingsReturnTo = from || 'menu';
   const isInGame = game.state === 'playing' || game.state === 'paused';
   if (game.state === 'playing') {
-    game.state = 'paused';
+    pauseGame();
     document.getElementById('pause-overlay').classList.add('hidden');
   }
 
@@ -2051,7 +2185,7 @@ function closeSettings() {
   document.getElementById('settings-overlay').classList.add('hidden');
   saveSettings();
   if (settingsReturnTo === 'playing') {
-    game.state = 'playing';
+    resumeGame();
   } else if (settingsReturnTo === 'pause') {
     document.getElementById('pause-overlay').classList.remove('hidden');
   }
@@ -2061,6 +2195,7 @@ function closeSettings() {
 function syncSettingsUI() {
   // Sound
   setToggle('snd-toggle', settings.soundEnabled ? 'on' : 'off');
+  setToggle('music-toggle', settings.menuMusicEnabled ? 'on' : 'off');
   document.getElementById('volume-slider').value = settings.soundVolume;
   document.getElementById('volume-label').textContent = settings.soundVolume + '%';
 
@@ -2101,6 +2236,7 @@ function setupSettingsUI() {
   // Toggle groups in settings
   const settingsToggles = {
     'snd-toggle': v => { settings.soundEnabled = v === 'on'; },
+    'music-toggle': v => { settings.menuMusicEnabled = v === 'on'; },
     'fx-master': v => {
       settings.effectsEnabled = v === 'on';
       document.getElementById('fx-sub').style.opacity = v === 'on' ? '1' : '0.35';
@@ -2161,6 +2297,7 @@ function setupSettingsUI() {
   // Reset buttons
   const resetMap = {
     soundEnabled: () => { settings.soundEnabled = DEFAULT_ADV.soundEnabled; syncSettingsUI(); saveSettings(); },
+    menuMusicEnabled: () => { settings.menuMusicEnabled = DEFAULT_ADV.menuMusicEnabled; syncSettingsUI(); saveSettings(); },
     soundVolume: () => { settings.soundVolume = DEFAULT_ADV.soundVolume; audio.setVolume(settings.soundVolume); syncSettingsUI(); saveSettings(); },
     effectsEnabled: () => { settings.effectsEnabled = DEFAULT_ADV.effectsEnabled; syncSettingsUI(); saveSettings(); },
     screenShake: () => { settings.screenShake = DEFAULT_ADV.screenShake; syncSettingsUI(); saveSettings(); },
@@ -2298,7 +2435,11 @@ function handleOptionChange(groupId, value) {
 }
 
 function showMenu() {
+  clearTimeout(gameoverTimeout);
+  gameoverTimeout = null;
+  clearGameInput();
   game.state = 'menu';
+  syncWebMenuMusic();
   document.body.classList.remove('game-active');
   if (document.fullscreenElement) document.exitFullscreen().catch(() => { });
   document.getElementById('menu').classList.remove('hidden');
@@ -2339,6 +2480,9 @@ function makeBall(x, y, dx, dy, team) {
 }
 
 function startGame() {
+  clearTimeout(gameoverTimeout);
+  gameoverTimeout = null;
+  clearGameInput();
   audio.init(); audio.resume();
   document.getElementById('menu').classList.add('hidden');
   document.getElementById('gameover').classList.add('hidden');
@@ -2389,11 +2533,107 @@ function startGame() {
   aiState = { p1: makeAiState(player1.cx, player1.cy), p2: makeAiState(player2.cx, player2.cy) };
 
   game.state = 'playing'; game.tickCount = 0; game.winner = null;
+  syncWebMenuMusic();
   game.timeRemaining = settings.winCondition === 'domination' ? Infinity : settings.duration;
-  lastFrameTime = 0; accumulator = 0;
+  lastFrameTime = null; accumulator = 0;
   // Sync side HUDs after layout settles
   requestAnimationFrame(syncSideHudAlignment);
 }
+
+// ==================== EMBEDDED HOST API ====================
+// Hosts own device discovery/mapping and send a complete input snapshot per
+// player. Axes are -1..1, +x is right, +y is down; booleans are held actions.
+// The host applies its device deadzone. Teleport charges for two seconds, just
+// like holding both web rotation buttons. This API is dormant on the website.
+let touchModeBeforeExternal = touchMode;
+window.PongGame = Object.freeze({
+  version: 1,
+  activateExternalControls(enabled = true) {
+    const active = Boolean(enabled);
+    if (active === externalControls) return;
+    clearGameInput();
+    if (active) { touchModeBeforeExternal = touchMode; touchMode = false; }
+    else touchMode = touchModeBeforeExternal;
+    externalControls = active;
+    syncWebMenuMusic();
+    document.body.classList.toggle('external-controls', active);
+    applyTouchMode();
+  },
+  setInput(playerIndex, input = {}) {
+    if (!externalControls || (playerIndex !== 0 && playerIndex !== 1)) return false;
+    const axis = value => Number.isFinite(value) ? Math.max(-1, Math.min(1, value)) : 0;
+    externalInput[playerIndex === 0 ? 'p1' : 'p2'] = {
+      x: axis(input.x), y: axis(input.y),
+      rotateLeft: input.rotateLeft === true,
+      rotateRight: input.rotateRight === true,
+      teleport: input.teleport === true,
+    };
+    return true;
+  },
+  clearInput: clearGameInput,
+  getSettings() {
+    return JSON.parse(JSON.stringify(settings));
+  },
+  configure(options = {}) {
+    if (!options || typeof options !== 'object' || Array.isArray(options)) throw new TypeError('Settings must be an object');
+    const booleanKeys = ['soundEnabled', 'menuMusicEnabled', 'effectsEnabled', 'freeMovement', 'mirroredPowerups',
+      'screenShake', 'racketOutline', 'particles', 'gridEffect', 'progressionBar'];
+    const ranges = { soundVolume: [0, 100], powerupFrequency: [5, 60], powerupDuration: [10, 120] };
+    const logicKeys = ['freeMovement', 'mirroredPowerups', 'powerupFrequency', 'powerupDuration'];
+    // Validate the whole update before changing anything or persisting it.
+    for (const [key, value] of Object.entries(options)) {
+      if (booleanKeys.includes(key)) {
+        if (typeof value !== 'boolean') throw new TypeError(key + ' must be true or false');
+      } else if (Object.prototype.hasOwnProperty.call(ranges, key)) {
+        const [min, max] = ranges[key];
+        if (!Number.isFinite(value) || value < min || value > max) throw new RangeError(key + ' must be between ' + min + ' and ' + max);
+      } else if (key === 'theme') {
+        if (!['cyber', 'coral', 'sunset'].includes(value)) throw new RangeError('Unknown color theme');
+      } else {
+        throw new RangeError('Unknown setting: ' + key);
+      }
+      if (logicKeys.includes(key) && (game.state === 'playing' || game.state === 'paused')) {
+        throw new Error('Gameplay settings cannot change during a match');
+      }
+    }
+    Object.assign(settings, options);
+    if (options.soundVolume !== undefined) audio.setVolume(options.soundVolume);
+    if (options.theme !== undefined) applyTheme(options.theme);
+    syncSettingsUI();
+    saveSettings();
+    return JSON.parse(JSON.stringify(settings));
+  },
+  getState() {
+    return {
+      state: game.state, mode: settings.mode, difficulty: settings.aiDifficulty,
+      duration: settings.duration, winCondition: settings.winCondition,
+      timeRemaining: Number.isFinite(game.timeRemaining) ? game.timeRemaining : null,
+      winner: game.winner, scores: { day: dayScore, night: nightScore },
+      players: [player1, player2].map(player => player ? {
+        x: player.cx, y: player.cy, angle: player.angle, team: player.team,
+      } : null),
+      teleports: ['p1', 'p2'].map(key => ({
+        remaining: teleportState[key].remaining,
+        charge: teleportState[key].holdFrames / TELEPORT_HOLD_FRAMES,
+      })),
+      externalControls,
+    };
+  },
+  start(options = {}) {
+    if (options.mode !== undefined && !['ai', '2p', 'aivsai'].includes(options.mode)) throw new RangeError('Unknown game mode');
+    if (options.difficulty !== undefined && !Object.prototype.hasOwnProperty.call(AI_SKILL, options.difficulty)) throw new RangeError('Unknown AI difficulty');
+    if (options.duration !== undefined && (!Number.isFinite(options.duration) || options.duration <= 0)) throw new RangeError('Duration must be positive seconds');
+    if (options.winCondition !== undefined && !['combined', 'timed', 'domination'].includes(options.winCondition)) throw new RangeError('Unknown win condition');
+    if (options.mode !== undefined) handleOptionChange('mode-select', options.mode);
+    if (options.difficulty !== undefined) settings.aiDifficulty = settings.ai1Difficulty = options.difficulty;
+    if (options.duration !== undefined) settings.duration = options.duration;
+    if (options.winCondition !== undefined) settings.winCondition = options.winCondition;
+    startGame();
+  },
+  pause: pauseGame,
+  resume: resumeGame,
+  showMenu,
+});
 
 // ==================== BOOT ====================
 loadSettings();
