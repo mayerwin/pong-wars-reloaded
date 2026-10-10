@@ -49,7 +49,7 @@ All key bindings are fully customizable via Settings > Configure Keys.
 
 ### Ball Teleport (Emergency Rescue)
 
-Hold **both left + right movement keys** for 2 seconds to teleport your nearest ball to your racket. This clears a small area of enemy territory around the spawn point and resets the ball to normal size. Each player gets **3 teleports per game** — shown as dimmed icons in the HUD (they brighten and show charging progress while held).
+Hold **both rotation keys** for 2 seconds to teleport your nearest ball to your racket. This clears a small area of enemy territory around the spawn point and resets the ball to normal size. Each player gets **3 teleports per game** — shown as dimmed icons in the HUD (they brighten and show charging progress while held).
 
 ### Power Shot
 
@@ -123,6 +123,12 @@ If a racket becomes completely trapped by enemy territory (can't move or rotate 
 - Sub-stepped movement prevents balls from passing through rackets at high speed
 - Ball-ball elastic collision prevents overlapping when multiple balls are in play
 - Balls pass through squares protected by the opponent's racket (no stuck oscillation)
+
+## Android TV / Google TV beta
+
+Play on Android TV or Google TV (including Google TV Streamer), solo or with two players. Supports gamepads, TV remotes, keyboards and mice.
+
+To join the beta, sign in and [join the tester group](https://groups.google.com/g/erwin-mayer-labs-beta/about), then [opt in on Google Play](https://play.google.com/apps/testing/com.github.pongwarsreloaded) using your TV's Google account and follow **Download test app**. Access may take time to activate. No debugging or sideloading needed. [Report issues](https://github.com/mayerwin/pong-wars-reloaded/issues).
 
 ## Development
 
