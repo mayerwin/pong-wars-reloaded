@@ -1,6 +1,31 @@
 # Android TV verification
 
-The subsequent shared-music integration moves the synthesizer to root `menu-music.js` for both web and Android and handles Chrome's pending autoplay requests on the first gesture. The web host has its own remembered menu toggle and yields to the TV host, so Android plays one soundtrack. This source update passes 75 JavaScript tests, Android lint, seven native unit tests, and a debug APK build; the APK contains exactly one music script and no obsolete `tv/music.js` copy. The signed code 9 measurements below describe the previously uploaded binary, before this source-layout refactor.
+## Arcade soundtrack (1.0.2)
+
+The shared player now decodes the bundled **Level 1** recording by Juhani Junkala and loops an `AudioBufferSourceNode`. Both web and Android use the same player and MP3. The recording and its CC0 provenance are in `assets/audio/`; Android requires no network access to play it.
+
+Verified on 10 October 2026:
+
+- All **78 JavaScript tests** pass, including asynchronous loading/decoding, failure recovery, first-gesture autoplay, late callbacks, mute, menu transitions and background lifecycle.
+- Android debug/release builds and lint pass; seven existing native unit tests remain green.
+- Desktop and mobile Chrome with strict autoplay start on the first click/touch. Music toggle, volume, persisted preferences, and silence during gameplay/pause pass. TV preview creates only one player and can resume with networking disabled.
+- Chrome decodes the MP3 to exactly **3,274,608 stereo frames at 44,100 Hz (74.25414966 seconds)**, matching the original WAV. LAME encoder delay and padding are removed. At 48,000 Hz it resamples to 3,564,199 frames.
+- Rendering across the loop boundary matches the expected repeated PCM samples exactly (maximum sample error 0), with no added silence. Accelerated real playback crosses the loop boundary without replacing or ending its source.
+- A gain ceiling of 0.25 keeps the decoded peak below 0.272 even at maximum music volume. Default 70% volume lowers it further.
+- Signed code **10** APK and AAB both contain byte-identical copies of the tested player, MP3 and audio license. APK signature verification and bundle JAR verification pass.
+- The debug APK ran on the dedicated 720p Google TV API 36 emulator: its bundled local asset decoded to the expected stereo duration, and the same looping source remained active across a full loop at accelerated test speed. Native remote music Off persisted across Home and process restart. Home suspended the context and released its source; foreground return resumed it. Gameplay and pause stayed silent. Settings and music credits fit the screen in inspected screenshots.
+- The exact signed **1.0.2/code 10** APK also passed a native remote smoke: launch, settings, music On/Off, credits and foreground return. Installed metadata has the expected version and no debuggable flag. AndroidRuntime/chromium logs have no app errors. Screenshots are in `arcade-release/`; its foreground image is byte-identical to the verified settings image.
+
+Evidence is under ignored `android/app/build/qa/`: `arcade-decode.json`, `arcade-music-browser.json`, `arcade-native.json`, `arcade-release-assets.json`, plus the browser/emulator QA scripts and screenshots. These are technical playback checks; the headless tests do not assess speaker sound quality.
+
+Signed release SHA-256 hashes:
+
+- `pong-wars-reloaded-v1.0.2-10-tv.apk`: `6170BD9D512269C5AE1C4F52CDBB8C3880664E1928EB82AA0B8BE7190AFEEBED`
+- `pong-wars-reloaded-v1.0.2-10-play.aab`: `B8F8FB72C4838F7ADCE4568515302EA5463F23D01649738E2C2F066E114D3117`
+
+## Earlier controller and display verification (1.0.1)
+
+The checks below describe the controller/display work and signed code 9 binary, before replacing the initial synthesized soundtrack with the shared recording above.
 
 Verified on 10 October 2026 using the official Google TV API 36 x86_64 system image, a dedicated `tv_720p` AVD, and a 1280 × 720 display. The AVD exposes `android.hardware.type.television`, `android.software.leanback`, and `android.software.leanback_only`. It ran headlessly with `-read-only -no-snapshot-save -no-audio`; no physical TV was used.
 

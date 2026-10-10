@@ -1,4 +1,4 @@
-/* Original, procedurally composed menu music shared by web and Android hosts. */
+/* Shared, offline menu music. The host owns settings and menu/lifecycle state. */
 (function (root, factory) {
   const Music = factory(root);
   if (typeof module === 'object' && module.exports) module.exports = Music;
@@ -6,61 +6,51 @@
 })(typeof globalThis === 'object' ? globalThis : this, function (root) {
   'use strict';
 
-  // A relaxed D-major / B-minor eight-bar phrase, with open ninths and space
-  // between melody notes. All sound is synthesized locally at 88 beats/minute.
-  const STEP = 60 / 88 / 4;
-  const CHORDS = [
-    [54, 57, 61, 64], [50, 54, 57, 61], [54, 57, 59, 62], [52, 57, 59, 61],
-    [54, 57, 61, 64], [50, 54, 57, 61], [54, 57, 59, 62], [52, 57, 59, 64]
-  ];
-  const BASS = [38, 35, 31, 33, 38, 35, 31, 33];
-  const MELODY = [
-    {3: 73, 7: 76, 12: 69}, {3: 73, 10: 66},
-    {3: 71, 7: 69, 12: 66}, {5: 64, 11: 69},
-    {3: 73, 7: 69, 12: 76}, {5: 73, 11: 69},
-    {3: 71, 10: 74}, {3: 71, 7: 69, 12: 64}
-  ];
-  const frequency = midi => 440 * Math.pow(2, (midi - 69) / 12);
   const clamp = value => Math.max(0, Math.min(1, value));
+  const finite = value => typeof value === 'number' && Number.isFinite(value);
+  const LOAD_RETRY_MS = 3000;
+  // The recording is mastered much louder than individual game sound effects.
+  const MUSIC_GAIN = 0.25;
 
   function envelopeAt(points, time) {
     if (time <= points[0][0]) return points[0][1];
-    for (let i = 1; i < points.length; i++) {
-      if (time <= points[i][0]) {
-        const [a, av] = points[i - 1], [b, bv] = points[i];
-        return av + (bv - av) * (time - a) / Math.max(0.00001, b - a);
-      }
-    }
-    return points[points.length - 1][1];
+    if (time >= points[1][0]) return points[1][1];
+    const [a, av] = points[0], [b, bv] = points[1];
+    return av + (bv - av) * (time - a) / Math.max(0.00001, b - a);
   }
 
   class PongMenuMusic {
     constructor(options = {}) {
       this.enabled = options.enabled !== false;
-      this.volume = typeof options.volume === 'number' && Number.isFinite(options.volume) ? clamp(options.volume) : 0.7;
+      this.volume = finite(options.volume) ? clamp(options.volume) : 0.7;
       this.active = false;
       this.background = false;
       this.disposed = false;
+      this._assetUrl = options.assetUrl || 'assets/audio/arcade-menu.mp3';
+      this._loopStart = finite(options.loopStart) ? Math.max(0, options.loopStart) : 0;
+      this._loopEnd = finite(options.loopEnd) ? options.loopEnd : null;
       this._contextFactory = options.audioContextFactory || (() => {
         const Context = root.AudioContext || root.webkitAudioContext;
-        return Context ? new Context({latencyHint: 'playback'}) : null;
+        return Context ? new Context({ latencyHint: 'playback' }) : null;
       });
+      this._fetch = options.fetch || (root.fetch && root.fetch.bind(root));
+      this._now = options.now || Date.now;
       this._setTimeout = options.setTimeout || root.setTimeout.bind(root);
       this._clearTimeout = options.clearTimeout || root.clearTimeout.bind(root);
       this._ctx = null;
       this._master = null;
-      this._voices = new Set();
-      this._timer = null;
-      this._stopTimer = null;
+      this._buffer = null;
+      this._source = null;
+      this._loadPending = null;
+      this._loadFailedAt = null;
+      this._loadAbort = null;
       this._resumePending = null;
       this._suspendPending = null;
+      this._stopTimer = null;
       this._playing = false;
-      this._gainEnvelope = [[0, 0]];
-      this._noise = null;
+      this._gainEnvelope = [[0, 0], [0, 0]];
     }
 
-    // The host owns persistence and combines the separate music preference with
-    // the game's master sound switch. Volume is normalized to 0..1.
     setEnabled(enabled) {
       const value = enabled === true;
       if (value === this.enabled || this.disposed) return;
@@ -69,11 +59,11 @@
     }
 
     setVolume(volume) {
-      if (typeof volume !== 'number' || !Number.isFinite(volume) || this.disposed) return;
+      if (!finite(volume) || this.disposed) return;
       const value = clamp(volume);
       if (value === this.volume) return;
       this.volume = value;
-      if (this._playing && this._wanted()) this._rampMaster(this.volume * 0.55, 0.15);
+      if (this._playing && this._wanted()) this._rampMaster(this.volume * MUSIC_GAIN, 0.15);
       else this._sync();
     }
 
@@ -84,8 +74,8 @@
       this._sync();
     }
 
-    // Call on first input as a fallback when a browser denies autoplay. Calling
-    // this while muted/in-game never creates or resumes an AudioContext.
+    // Retrying resume synchronously in the gesture is essential: Chrome can
+    // leave its original autoplay resume promise pending indefinitely.
     unlock() { return this._sync(true); }
 
     resume() {
@@ -104,9 +94,11 @@
       if (this.disposed) return Promise.resolve();
       this.disposed = true;
       this._halt(0);
+      if (this._loadAbort) this._loadAbort.abort();
+      this._loadAbort = null;
       const ctx = this._ctx;
       this._ctx = null;
-      this._noise = null;
+      this._buffer = null;
       if (this._master) this._master.disconnect();
       this._master = null;
       try { return ctx && ctx.state !== 'closed' ? Promise.resolve(ctx.close()).catch(() => {}) : Promise.resolve(); }
@@ -127,32 +119,96 @@
           this._master = this._ctx.createGain();
           this._master.gain.value = 0;
           this._master.connect(this._ctx.destination);
-          this._gainEnvelope = [[this._ctx.currentTime, 0]];
         } catch (_) { this._ctx = null; return Promise.resolve(false); }
       }
+      // Download/decode must never delay the gesture's synchronous resume call.
+      const resumed = this._resumeContext(fromGesture);
+      const loaded = this._loadBuffer(fromGesture);
+      this._begin();
+      return Promise.all([resumed, loaded]).then(() => this._begin());
+    }
+
+    _resumeContext(fromGesture) {
       const ctx = this._ctx;
-      if (ctx.state === 'closed') return Promise.resolve(false);
-      if (this._suspendPending) return this._suspendPending.then(() => this._sync());
-      if (ctx.state === 'running') {
-        this._begin();
-        return Promise.resolve(true);
-      }
-      // Chrome may leave the autoplay resume promise pending until a *new*
-      // resume call happens inside a user gesture. Ordinary updates can share
-      // the pending request, but unlock must make that new synchronous call.
+      if (!ctx || ctx.state === 'closed') return Promise.resolve(false);
+      if (this._suspendPending) return this._suspendPending.then(() => {
+        if (!this._wanted()) return false;
+        return this._resumeContext(false);
+      });
+      if (ctx.state === 'running') return Promise.resolve(true);
       if (this._resumePending && !fromGesture) return this._resumePending;
       try {
-        // resume() is called synchronously in the input handler's gesture scope.
         const pending = Promise.resolve(ctx.resume()).then(() => {
-          if (this._ctx === ctx && this._wanted() && ctx.state === 'running') { this._begin(); return true; }
-          if (this._ctx === ctx && !this._wanted()) this._halt(0);
-          return false;
+          if (this._ctx !== ctx) return false;
+          if (!this._wanted()) { this._halt(0); return false; }
+          this._begin();
+          return ctx.state === 'running';
         }).catch(() => false).finally(() => {
           if (this._resumePending === pending) this._resumePending = null;
         });
         this._resumePending = pending;
         return pending;
       } catch (_) { return Promise.resolve(false); }
+    }
+
+    _loadBuffer(fromGesture) {
+      if (this._buffer) return Promise.resolve(true);
+      if (this._loadPending) return this._loadPending;
+      if (!this._fetch || !this._ctx || this.disposed) return Promise.resolve(false);
+      if (this._loadFailedAt !== null && (!fromGesture || this._now() - this._loadFailedAt < LOAD_RETRY_MS)) return Promise.resolve(false);
+      const ctx = this._ctx;
+      const abort = root.AbortController ? new root.AbortController() : null;
+      this._loadAbort = abort;
+      const pending = Promise.resolve().then(() => this._fetch(this._assetUrl, abort ? { signal: abort.signal } : {}))
+        .then(response => {
+          if (!response.ok) throw new Error('Menu music could not be loaded');
+          return response.arrayBuffer();
+        })
+        .then(data => {
+          if (this.disposed || this._ctx !== ctx) return null;
+          return ctx.decodeAudioData(data);
+        })
+        .then(buffer => {
+          if (this.disposed || this._ctx !== ctx) return false;
+          if (!buffer || !finite(buffer.duration) || buffer.duration <= 0) throw new Error('Menu music could not be decoded');
+          this._buffer = buffer;
+          this._loadFailedAt = null;
+          this._begin();
+          return true;
+        })
+        .catch(() => {
+          if (!this.disposed) this._loadFailedAt = this._now();
+          return false;
+        })
+        .finally(() => {
+          if (this._loadPending === pending) this._loadPending = null;
+          if (this._loadAbort === abort) this._loadAbort = null;
+        });
+      this._loadPending = pending;
+      return pending;
+    }
+
+    _begin() {
+      if (!this._wanted() || !this._buffer || !this._ctx || this._ctx.state !== 'running') return false;
+      if (this._playing) return true;
+      if (this._stopTimer !== null) this._clearTimeout(this._stopTimer);
+      this._stopTimer = null;
+      if (!this._source) {
+        const source = this._ctx.createBufferSource();
+        source.buffer = this._buffer;
+        source.loop = true;
+        source.loopStart = this._loopStart < this._buffer.duration ? this._loopStart : 0;
+        source.loopEnd = finite(this._loopEnd) && this._loopEnd > source.loopStart
+          ? Math.min(this._loopEnd, this._buffer.duration) : this._buffer.duration;
+        source.connect(this._master);
+        // The decoded recording loops in the audio graph, sample-accurately;
+        // there is no HTMLAudio ended/restart gap or JavaScript beat scheduler.
+        source.start(0, source.loopStart);
+        this._source = source;
+      }
+      this._playing = true;
+      this._rampMaster(this.volume * MUSIC_GAIN, 0.45);
+      return true;
     }
 
     _rampMaster(target, seconds) {
@@ -166,132 +222,39 @@
       this._gainEnvelope = [[now, from], [now + seconds, target]];
     }
 
-    _begin() {
-      if (this._playing || !this._wanted() || !this._ctx || this._ctx.state !== 'running') return;
-      if (this._stopTimer !== null) this._clearTimeout(this._stopTimer);
-      this._stopTimer = null;
-      this._playing = true;
-      this._step = 0;
-      this._next = this._ctx.currentTime + 0.04;
-      this._rampMaster(this.volume * 0.55, 0.65);
-      this._tick();
-    }
-
-    _tick() {
-      this._timer = null;
-      if (!this._playing || !this._wanted()) return;
-      if (this._ctx.state !== 'running') { this._halt(0); return; }
-      const now = this._ctx.currentTime;
-      // After a stalled JS thread, skip elapsed notes instead of bursting them.
-      if (this._next < now - 0.1) {
-        const skipped = Math.ceil((now + 0.025 - this._next) / STEP);
-        this._step = (this._step + skipped) % 128;
-        this._next += skipped * STEP;
-      }
-      while (this._next < now + 0.16) {
-        this._schedule(this._step, this._next);
-        this._step = (this._step + 1) % 128;
-        this._next += STEP;
-      }
-      this._timer = this._setTimeout(() => this._tick(), 50);
+    _stopSource() {
+      const source = this._source;
+      this._source = null;
+      if (!source) return;
+      try { source.stop(); } catch (_) { /* Already stopped. */ }
+      source.disconnect();
     }
 
     _halt(fade) {
-      if (this._timer !== null) this._clearTimeout(this._timer);
-      this._timer = null;
       this._playing = false;
       if (!this._ctx) return;
-      // Repeated mute/input events must not keep postponing suspension.
       if (this._stopTimer !== null && fade > 0) return;
       if (this._stopTimer !== null) this._clearTimeout(this._stopTimer);
       this._stopTimer = null;
       if (this._ctx.state !== 'running') fade = 0;
       this._rampMaster(0, fade);
-      const now = this._ctx.currentTime;
-      for (const voice of this._voices) {
-        const value = envelopeAt(voice.envelope, now);
-        voice.gain.gain.cancelScheduledValues(now);
-        voice.gain.gain.setValueAtTime(value, now);
-        voice.gain.gain.linearRampToValueAtTime(0, now + fade);
-        voice.envelope = [[now, value], [now + fade, 0]];
-        try { voice.source.stop(now + fade + 0.01); } catch (_) { /* Already ended. */ }
-      }
-      if (fade && this._voices.size) {
+      if (fade && this._source) {
         this._stopTimer = this._setTimeout(() => {
           this._stopTimer = null;
-          this._clearVoices();
+          this._stopSource();
           this._suspendContext();
         }, fade * 1000 + 40);
-      } else { this._clearVoices(); this._suspendContext(); }
+      } else { this._stopSource(); this._suspendContext(); }
     }
 
     _suspendContext() {
       const ctx = this._ctx;
       if (!ctx || ctx.state !== 'running' || this._suspendPending || this.disposed || this._wanted()) return;
-      // Never wait for an autoplay-blocked resume to settle before suspending.
-      // Its own completion handler reconciles a late resume with current state.
+      // Do not wait for blocked autoplay; a late resume checks current state.
       try {
         this._suspendPending = Promise.resolve(ctx.suspend())
           .catch(() => {}).finally(() => { this._suspendPending = null; });
       } catch (_) { /* A closing/unsupported context is already silent. */ }
-    }
-
-    _releaseVoice(voice) {
-      if (!this._voices.delete(voice)) return;
-      voice.source.onended = null;
-      for (const node of voice.nodes) node.disconnect();
-    }
-
-    _clearVoices() {
-      for (const voice of [...this._voices]) {
-        try { voice.source.stop(this._ctx ? this._ctx.currentTime : 0); } catch (_) { /* Already ended. */ }
-        this._releaseVoice(voice);
-      }
-    }
-
-    _voice(type, midi, at, duration, peak, attack, release, cutoff, pan = 0) {
-      const ctx = this._ctx, source = type === 'noise' ? ctx.createBufferSource() : ctx.createOscillator();
-      if (type === 'noise') {
-        if (!this._noise) {
-          this._noise = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.12), ctx.sampleRate);
-          const data = this._noise.getChannelData(0);
-          let seed = 0x706f6e67;
-          for (let i = 0; i < data.length; i++) { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; data[i] = seed / 2147483648 - 1; }
-        }
-        source.buffer = this._noise;
-      } else {
-        source.type = type === 'kick' ? 'sine' : type;
-        source.frequency.setValueAtTime(type === 'kick' ? 110 : frequency(midi), at);
-        if (type === 'kick') source.frequency.exponentialRampToValueAtTime(48, at + duration);
-      }
-      const filter = ctx.createBiquadFilter(), gain = ctx.createGain();
-      filter.type = type === 'noise' ? 'bandpass' : 'lowpass';
-      filter.frequency.value = cutoff;
-      filter.Q.value = 0.5;
-      const envelope = [[at, 0], [at + attack, peak], [at + duration - release, peak * 0.72], [at + duration, 0]];
-      gain.gain.value = 0;
-      gain.gain.setValueAtTime(0, at);
-      for (const [time, value] of envelope.slice(1)) gain.gain.linearRampToValueAtTime(value, time);
-      source.connect(filter); filter.connect(gain);
-      const nodes = [source, filter, gain];
-      if (ctx.createStereoPanner) {
-        const panner = ctx.createStereoPanner(); panner.pan.value = pan;
-        gain.connect(panner); panner.connect(this._master); nodes.push(panner);
-      } else gain.connect(this._master);
-      const voice = {source, gain, nodes, envelope};
-      this._voices.add(voice);
-      source.onended = () => this._releaseVoice(voice);
-      source.start(at);
-      source.stop(at + duration + 0.015);
-    }
-
-    _schedule(step, at) {
-      const bar = Math.floor(step / 16), beat = step % 16;
-      if (beat === 0) CHORDS[bar].forEach((note, i) => this._voice('triangle', note, at, STEP * 17, 0.018, 0.38, 0.6, 1000, (i - 1.5) * 0.13));
-      if (beat === 0 || beat === 6 || beat === 12) this._voice('triangle', BASS[bar] + (beat === 6 ? 12 : 0), at, STEP * 2.8, beat === 6 ? 0.045 : 0.075, 0.012, 0.18, 420);
-      if (beat === 0 || beat === 8) this._voice('kick', 0, at, 0.18, 0.09, 0.008, 0.14, 650);
-      if (beat === 4 || beat === 12) this._voice('noise', 0, at, 0.075, 0.012, 0.003, 0.06, 5200, 0.12);
-      if (MELODY[bar][beat]) this._voice('triangle', MELODY[bar][beat], at, STEP * 4.5, 0.045, 0.012, 0.62, 1700, bar % 2 ? -0.16 : 0.16);
     }
   }
 

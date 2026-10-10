@@ -115,7 +115,7 @@ async function connect() {
     try { adb('forward','--remove',`tcp:${port}`); } catch (_) {}
   }
   const observeMusic = () => evaluate(`(()=>{const p=window.PongMenuMusic.prototype;const original=p.unlock;p.unlock=function(...args){window.__qaMusic=this;return original.apply(this,args);};return true;})()`);
-  const musicState = () => evaluate(`(()=>{const m=window.__qaMusic;return m?{enabled:m.enabled,active:m.active,background:m.background,playing:m._playing,wanted:m._wanted(),context:m._ctx?.state,voices:m._voices.size,pref:localStorage.getItem('pongTVMenuMusic.v1')}:null;})()`);
+  const musicState = () => evaluate(`(()=>{const m=window.__qaMusic;return m?{enabled:m.enabled,active:m.active,background:m.background,playing:m._playing,wanted:m._wanted(),context:m._ctx?.state,looping:!!m._source?.loop,duration:m._buffer?.duration,pref:localStorage.getItem('pongTVMenuMusic.v1')}:null;})()`);
   return {adb,evaluate,snapshot,waitFor,nativeKey,jsKey,click,screenshot,createNativePads,observeMusic,musicState,close,errors,sleep};
 }
 module.exports = {connect,sleep,adb};

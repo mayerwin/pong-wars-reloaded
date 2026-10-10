@@ -1,0 +1,34 @@
+Pong Wars Reloaded menu music
+============================
+
+Track: Level 1
+Album: Retro Game Music Pack
+Composer: Juhani Junkala (SubspaceAudio)
+License: CC0 1.0 Universal (public domain dedication)
+https://creativecommons.org/publicdomain/zero/1.0/
+https://creativecommons.org/publicdomain/zero/1.0/legalcode
+
+Source published by the composer:
+https://opengameart.org/content/5-chiptunes-action
+Archive downloaded October 10, 2026:
+https://opengameart.org/sites/default/files/5%20Action%20Chiptunes%20By%20Juhani%20Junkala.zip
+
+Original file:
+Juhani Junkala [Retro Game Music Pack] Level 1.wav
+SHA-256: 6f79ae4c6f2b59baa62c46bcd264c9d157f5dca2c30845fabc3c5be4e2b64a43
+44,100 Hz, stereo, 3,274,608 frames (74.25414966 seconds).
+The original WAV is marked "Loop Ready, Free to Use Anywhere".
+The archive's INFO.txt explicitly releases the tracks under CC0.
+
+Bundled file: arcade-menu.mp3
+SHA-256: 72f409ea8e9723dd283d39991a3e356c056dc4adef7998ef4e27263833d8ffa5
+Converted from the untrimmed WAV with FFmpeg/libmp3lame, VBR quality 2,
+preserving the encoder delay/padding metadata needed for gapless decoding.
+No changes to the composition. The app decodes once and loops the PCM buffer.
+
+Conversion (FFmpeg 7.1, libmp3lame):
+ffmpeg -i "Juhani Junkala [Retro Game Music Pack] Level 1.wav" -map_metadata -1 -codec:a libmp3lame -q:a 2 -metadata title="Level 1 (Retro Game Music Pack)" -metadata artist="Juhani Junkala" -metadata copyright="CC0 1.0 Universal" arcade-menu.mp3
+
+This third-party recording is offered under CC0, independently of the
+repository's MIT source-code license. Credit is included as a courtesy;
+the composer does not endorse this game.

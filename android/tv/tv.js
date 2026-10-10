@@ -137,7 +137,7 @@
     else if (action === 'help') help();
     else if (action === 'privacy') {
       phase = 'privacy';
-      screen('<p class="tv-kicker">Pong Wars Reloaded</p><h2>Private by design.</h2><p class="tv-copy">This app works offline. It does not collect or share personal data.<br>No accounts, advertising, analytics, location or Bluetooth permissions.<br><br>Your controller identifiers, button mappings and game preferences are saved locally.<br>Clear the app’s storage or uninstall it to remove them. Android backup is disabled.<br><br>Game by Erwin Mayer, based on Pong Wars by Koen van Gilst.<br>Source and support: github.com/mayerwin/pong-wars-reloaded</p><div class="tv-actions">' + button('options-general', 'Back to settings') + '</div>');
+      screen('<p class="tv-kicker">Pong Wars Reloaded</p><h2>Private by design.</h2><p class="tv-copy">This app works offline. It does not collect or share personal data.<br>No accounts, advertising, analytics, location or Bluetooth permissions.<br><br>Your controller identifiers, button mappings and game preferences are saved locally.<br>Clear the app’s storage or uninstall it to remove them. Android backup is disabled.<br><br>Game by Erwin Mayer, based on Pong Wars by Koen van Gilst.<br>Music: Level 1 · Juhani Junkala · CC0 (public domain).<br>Source and support: github.com/mayerwin/pong-wars-reloaded</p><div class="tv-actions">' + button('options-general', 'Back to settings') + '</div>');
     }
     else if (action === 'options') { settingsOrigin = phase === 'pause' ? 'pause' : 'home'; options('general'); }
     else if (action === 'options-back') { if (settingsOrigin === 'pause') paused(); else home(); }

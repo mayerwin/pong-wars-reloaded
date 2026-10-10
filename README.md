@@ -85,7 +85,7 @@ Access settings via the **gear icon** (⚙) during gameplay, or from the main me
 
 ### Sound
 - **Sound On/Off**: master sound toggle
-- **Menu Music On/Off**: original background music in menus, with a remembered preference. Browsers may require a click or key press before audio starts.
+- **Menu Music On/Off**: looping arcade music in menus, with a remembered preference. Browsers may require a click or key press before audio starts.
 - **Volume**: adjustable slider (0-100%)
 
 ### Visual Effects
@@ -146,6 +146,8 @@ Run the automated tests with `node --test tests/*.test.cjs android/tests/*.test.
 ## Credits
 
 Original Pong Wars by [Koen van Gilst](https://koenvangilst.nl). This fork by [Erwin Mayer](https://github.com/mayerwin/pong-wars-reloaded).
+
+Menu music: **Level 1** from *Retro Game Music Pack* by Juhani Junkala, released under [CC0](https://opengameart.org/content/5-chiptunes-action). [Audio credits and license](assets/audio/LICENSE.txt).
 
 I saw this first [here](https://twitter.com/nicolasdnl/status/1749715070928433161), but it appears to be a much older idea. There's some more information on the history in the [Hackernews discussion](https://news.ycombinator.com/item?id=39159418).
 

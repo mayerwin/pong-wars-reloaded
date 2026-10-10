@@ -21,6 +21,7 @@ def generatedWebAssets = layout.buildDirectory.dir('generated/gameAssets')
 tasks.register('syncGameAssets', Sync) {
     from(rootProject.projectDir.parentFile) {
         include 'index.html', 'game.js', 'menu-music.js', 'style.css', 'icon.svg', 'manifest.json', 'LICENSE'
+        include 'assets/audio/arcade-menu.mp3', 'assets/audio/LICENSE.txt'
         filesMatching('index.html') {
             filter { String line ->
                 line.replace('</head>', '<link rel="stylesheet" href="tv/tv.css"></head>')
