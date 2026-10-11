@@ -86,6 +86,8 @@ Access settings via the **gear icon** (⚙) during gameplay, or from the main me
 ### Sound
 - **Sound On/Off**: master sound toggle
 - **Menu Music On/Off**: looping arcade music in menus, with a remembered preference. Browsers may require a click or key press before audio starts.
+- Menu navigation, button presses and match start have short sound cues, even with menu music off. Starting a match fades the music into the start cue without delaying play. The Sound switch and volume apply to these cues too.
+- **Touch vibration On/Off**: gentle feedback for taps and match start on supported touch devices, saved independently of sound. This setting appears only when the browser exposes vibration support.
 - **Volume**: adjustable slider (0-100%)
 
 ### Visual Effects

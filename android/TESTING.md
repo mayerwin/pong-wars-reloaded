@@ -1,5 +1,32 @@
 # Android TV verification
 
+## Menu feedback and match transitions (1.0.3)
+
+The shared effects context now plays short navigation, confirmation, back, pause/resume, controller-check and start cues. Menu music fades out over 450 ms as the start cue plays, without delaying gameplay. Explicit mute uses a much faster 30 ms fade. Touch vibration is optional, independently remembered, and limited to supported web touch devices.
+
+Verified on 10 October 2026:
+
+- All **113 JavaScript tests** pass, covering cue throttling, bounded voices, settings, lifecycle, native menu actions, keyboard activation, key-binding return paths and haptic preferences. Android debug build, lint and the existing native unit tests pass.
+- Real desktop Chrome with strict autoplay produces nonzero audio output on the very first button press with music Off (measured peak 0.04487). Testing caught and fixed a cold-device startup race: Chrome can report a running context while its audio clock remains at zero. Short cues now clean up on the audio clock instead of disappearing on a wall-clock timeout before playback starts.
+- Buttons, settings, reset controls and sliders emit their cues. Enter and Space activate the focused control once; held keys do not click through. Start and Resume each emit one semantic cue without an additional generic confirmation.
+- The start transition begins gameplay immediately while music gain falls from 0.175 through 0.0817 to zero under the 515 ms start cue. The music source is released and its context suspended after the fade. Sound Off cancels active cues and prevents subsequent output; backgrounding cancels cues, and foregrounding does not replay them.
+- Mobile Chrome emulation verifies short vibration requests, the separate Off preference across reload, and graceful behavior without the vibration API. This checks API calls, not a physical phone's vibration motor.
+- Closing key configuration opened from settings restores its parent settings screen, including during a paused match. Escape unwinds the visible screens in order.
+- The first Tab cue also survives slow synchronous audio initialization. Keyboard users cannot change locked gameplay settings during a match; those controls re-enable from the menu. Mobile Settings scrolls to its Done button, and rotation taps request only an 8 ms vibration.
+- Three fresh Chrome processes each rendered the very first 45 ms Tab navigation cue with music Off (peak 0.02423, maximum RMS 0.01010). Even a 342–435 ms initial audio-clock stall preserved the cue; no artificial playback delay was added. Captures are in `cold-tab-pcm.json`.
+- The Google TV API 36 debug app passed native navigation, confirmation, Sound Off/On, Start, Pause and Resume checks with rendered PCM. Real Android `uinput` holds moved focus four times and emitted four navigation cues, with no sound at a blocked boundary. Three Home/return cycles re-enabled feedback silently. Testing found a missing native focus-gain resume event; balancing focus loss and gain fixes an intermittent silent return without automatically resuming the match.
+- Capturing the isolated first 45 ms cue on the software-rendered AVD was intermittent. Subsequent native navigation and longer cues had nonzero output, and the three independent cold-browser PCM tests above passed. This remains a limitation of the emulator audio observation, not evidence of physical TV speaker performance.
+- The exact signed **1.0.3/code 11** APK passed a native remote smoke. All eight screenshots were visually inspected: home, music Off, Sound Off/On, gameplay, pause, Home-return still paused, and explicit resume. Metadata confirms code 11 and no debuggable flag; AndroidRuntime/chromium error logs are empty. Evidence is in `feedback-release/`.
+
+Browser evidence and reproduction harnesses are under ignored `android/app/build/qa/`: `ui-feedback-browser.json`, `ui-feedback-extra.json`, `check-ui-feedback.cjs` and `check-ui-feedback-extra.cjs`. Headless audio checks measure rendered output; they do not assess physical TV speakers or Bluetooth latency.
+
+After installing the debug APK in the dedicated emulator, run `node android/tests/emulator-feedback.cjs` for the native feedback regression. It sets Sound On at 70% with music Off in the disposable test app, checks cues and repeated Home/return cycles, and uses a virtual Android input device for held-button repeat. It writes `feedback-native.json` alongside the other ignored evidence. The driver rejects physical devices.
+
+Signed **1.0.3/code 11** APK and AAB signature checks pass. Both contain byte-identical copies of the tested game, feedback player, music player, TV adapter, MP3 and audio license (`feedback-release-assets.json`). SHA-256 hashes:
+
+- `pong-wars-reloaded-v1.0.3-11-tv.apk`: `5CE5493B7F97E5E994B09A84B8FD1ED03337C3A3EF3FC43EF29C020F48AB074F`
+- `pong-wars-reloaded-v1.0.3-11-play.aab`: `1AE55301E61F9BABF5C4163C9B881A089B54656088F280A81652A5E1BB8809D1`
+
 ## Arcade soundtrack (1.0.2)
 
 The shared player now decodes the bundled **Level 1** recording by Juhani Junkala and loops an `AudioBufferSourceNode`. Both web and Android use the same player and MP3. The recording and its CC0 provenance are in `assets/audio/`; Android requires no network access to play it.

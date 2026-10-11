@@ -163,12 +163,12 @@
           <button class="start-button" id="start-btn">START GAME</button>
           <div class="controls-help desktop-only" id="desktop-controls-help">
             P1: E S D F + A/Q rotate &bull; P2: Arrows + ,/. rotate<br>
-            <a id="config-keys-link">Configure Keys</a> &bull; <a id="menu-settings-link">&#x2699; Settings</a> &bull;
+            <a id="config-keys-link" role="button" tabindex="0">Configure Keys</a> &bull; <a id="menu-settings-link" role="button" tabindex="0">&#x2699; Settings</a> &bull;
             ESC: Pause
           </div>
           <div class="controls-help mobile-only">
             Use side joysticks to move &bull; Buttons to rotate<br>
-            <a id="menu-settings-link-mobile">&#x2699; Settings</a>
+            <a id="menu-settings-link-mobile" role="button" tabindex="0">&#x2699; Settings</a>
           </div>
         </div>
       </div>
@@ -178,7 +178,7 @@
         <div class="menu-content" id="settings-content">
           <h1 style="font-size:16px;margin-bottom:6px">&#x2699; SETTINGS</h1>
 
-          <h2 class="settings-section-title">Sound</h2>
+          <h2 class="settings-section-title">Sound &amp; feedback</h2>
           <div class="setting-row">
             <label>Sound</label>
             <div class="setting-controls">
@@ -205,6 +205,17 @@
               <input type="range" id="volume-slider" min="0" max="100" value="70">
               <span class="setting-value" id="volume-label">70%</span>
               <button class="reset-btn" data-key="soundVolume" title="Reset to default">&#x21BA;</button>
+            </div>
+          </div>
+
+          <div class="setting-row hidden" id="haptics-row">
+            <label>Touch vibration</label>
+            <div class="setting-controls">
+              <div class="toggle-group" id="haptics-toggle" style="min-width:90px">
+                <button data-value="on" class="active">On</button>
+                <button data-value="off">Off</button>
+              </div>
+              <button class="reset-btn" data-key="hapticsEnabled" title="Reset to default">&#x21BA;</button>
             </div>
           </div>
 
@@ -430,6 +441,7 @@
   </div>
 
   <script src="menu-music.js"></script>
+  <script src="ui-feedback.js"></script>
   <script id="main-js" src="game.js"></script>
 </body>
 

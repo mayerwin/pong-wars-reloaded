@@ -53,19 +53,23 @@ function loadHost(saved = {}, preferences = {}) {
   document.elementFromPoint = () => nodes.get('tv-root').buttons.find(b => b.dataset.do === document.pointTarget) || null;
   const game = {
     state: {state:'menu', winner:null, scores:{day:512, night:512}}, inputs: [], starts: 0,
+    feedbackCalls: [], cues: [], feedbackActive: true, unlocks: 0,
     settings: {soundEnabled:true, soundVolume:70, theme:'cyber', effectsEnabled:true,
       screenShake:true, racketOutline:true, particles:true, gridEffect:false, progressionBar:true,
       freeMovement:false, mirroredPowerups:true, powerupFrequency:15, powerupDuration:40},
     activateExternalControls() {}, clearInput() { this.inputs = []; },
+    feedback(kind) { this.feedbackCalls.push({kind, enabled:this.settings.soundEnabled, active:this.feedbackActive}); if (this.feedbackActive && this.settings.soundEnabled && this.settings.soundVolume > 0) this.cues.push(kind); },
+    unlockAudio() { this.unlocks++; },
+    setFeedbackActive(active) { this.feedbackActive = active; },
     getSettings() { return {...this.settings}; },
     configure(options) {
       if (['playing','paused'].includes(this.state.state) && Object.keys(options).some(k => ['freeMovement','mirroredPowerups','powerupFrequency','powerupDuration'].includes(k))) throw new Error('Gameplay settings locked');
       Object.assign(this.settings, options);
     },
     showMenu() { this.state.state = 'menu'; },
-    start(options) { this.options = options; this.starts++; this.state.state = 'playing'; },
+    start(options) { this.options = options; this.starts++; this.state.state = 'playing'; this.feedback('start'); },
     pause() { if (this.state.state === 'playing') this.state.state = 'paused'; },
-    resume() { if (this.state.state === 'paused') this.state.state = 'playing'; },
+    resume() { if (this.state.state === 'paused') { this.state.state = 'playing'; this.feedback('resume'); } },
     getState() { return this.state; },
     setInput(index, value) { this.inputs[index] = value; },
   };
@@ -462,4 +466,108 @@ test('cancelling a replacement controller keeps its disconnected player slot and
   assert.equal(host.game.starts, 1);
   host.key(reconnected, 'DPAD_UP'); host.advance(20);
   assert.equal(host.game.inputs[1].y, -1);
+});
+
+test('navigation cues require a real focus change and obey the held-input throttle', () => {
+  const host = loadHost();
+  host.advance(200);
+  assert.deepEqual(host.game.cues, [], 'initial rendering/focus must be silent');
+  host.tap(remote, 'DPAD_UP');
+  assert.deepEqual(host.game.cues, [], 'top edge must not sound');
+  host.key(remote, 'DPAD_DOWN');
+  assert.deepEqual(host.game.cues, ['navigate']);
+  host.key(remote, 'DPAD_DOWN', 'down', 1); host.advance(40);
+  host.key(remote, 'DPAD_DOWN', 'down', 2);
+  assert.deepEqual(host.game.cues, ['navigate'], 'blocked repeats must be silent');
+  host.advance(200); host.key(remote, 'DPAD_DOWN', 'down', 3);
+  assert.deepEqual(host.game.cues, ['navigate', 'navigate']);
+  host.key(remote, 'DPAD_DOWN', 'up');
+  host.document.pointTarget = 'options';
+  host.send(mouse, {type:'motion', pointer:{x:.1,y:.1}});
+  const count = host.game.cues.length;
+  host.send(mouse, {type:'motion', pointer:{x:.11,y:.1}});
+  assert.equal(host.game.cues.length, count, 'pointer movement inside one button must not chatter');
+  assert.ok(host.game.unlocks > 0, 'meaningful native input unlocks shared audio');
+});
+
+test('menu feedback remains available with music Off and respects applied master sound/volume', () => {
+  const host = loadHost();
+  host.click('options'); host.click('menu-music');
+  assert.equal(host.music.enabled, false);
+  assert.deepEqual(host.game.cues, ['confirm','confirm']);
+  host.game.cues.length = 0;
+  host.click('setting-soundEnabled'); host.click('setting-theme');
+  assert.deepEqual(host.game.cues, [], 'switching master Sound Off and muted actions stay silent');
+  assert.equal(host.game.feedbackCalls.at(-1).enabled, false);
+  host.click('setting-soundEnabled');
+  assert.deepEqual(host.game.cues, ['confirm'], 'Sound On confirms after the setting changes');
+  assert.equal(host.game.feedbackCalls.at(-1).enabled, true);
+  host.game.settings.soundVolume = 100;
+  host.click('setting-soundVolume');
+  assert.equal(host.game.settings.soundVolume, 0);
+  assert.deepEqual(host.game.cues, ['confirm'], 'zero volume applies before its cue');
+  host.click('setting-soundVolume');
+  assert.deepEqual(host.game.cues, ['confirm','confirm']);
+});
+
+test('Start, pause and Resume each produce one cue; automatic lifecycle transitions stay silent', () => {
+  const host = loadHost();
+  host.click('watch');
+  assert.deepEqual(host.game.cues, ['start'], 'engine Start must not also get a TV confirm');
+  host.key(remote, 'BACK');
+  assert.deepEqual(host.game.cues, ['start','pause']);
+  host.key(remote, 'BACK'); host.key(remote, 'BACK', 'down', 1);
+  assert.deepEqual(host.game.cues, ['start','pause'], 'held Back must not repeat cues or Resume');
+  host.key(remote, 'BACK', 'up'); host.tap(remote, 'BACK');
+  assert.deepEqual(host.game.cues, ['start','pause','resume']);
+  host.send(remote, {type:'lifecycle', action:'pause'});
+  assert.equal(host.game.feedbackActive, false);
+  assert.deepEqual(host.game.cues, ['start','pause','resume']);
+  host.click('options');
+  assert.deepEqual(host.game.cues, ['start','pause','resume'], 'background input must not sound');
+  host.send(remote, {type:'lifecycle', action:'resume'});
+  assert.equal(host.game.feedbackActive, true);
+  assert.deepEqual(host.game.cues, ['start','pause','resume']);
+  host.tap(remote, 'BACK');
+  assert.equal(host.game.cues.at(-1), 'back');
+  host.click('resume');
+  assert.equal(host.game.cues.at(-1), 'resume');
+  const before = host.game.cues.length;
+  host.event('blur');
+  assert.equal(host.game.cues.length, before, 'focus-loss pause must be silent');
+});
+
+test('setup cues confirm accepted steps once and reserve success for completing all checks', () => {
+  const host = loadHost(); host.click('solo');
+  chooseController(host, remote);
+  host.game.cues.length = 0;
+  for (const code of ['DPAD_UP','DPAD_DOWN','DPAD_LEFT','DPAD_RIGHT']) host.hold(remote, code);
+  host.tap(remote, 'DPAD_CENTER'); host.hold(remote, 'DPAD_LEFT'); host.hold(remote, 'DPAD_RIGHT');
+  assert.deepEqual(host.game.cues, Array(6).fill('confirm'));
+  host.key(remote, 'DPAD_CENTER'); host.advance(3500);
+  assert.deepEqual(host.game.cues, [...Array(6).fill('confirm'),'success']);
+  host.key(remote, 'DPAD_CENTER'); host.key(remote, 'DPAD_CENTER', 'down', 1); host.advance(300);
+  assert.equal(host.game.cues.length, 7, 'held final rescue must not click or sound through review');
+  host.key(remote, 'DPAD_CENTER', 'up'); host.tap(remote, 'DPAD_CENTER');
+  assert.equal(host.game.cues.at(-1), 'confirm');
+  host.tap(remote, 'DPAD_CENTER');
+  assert.equal(host.game.cues.at(-1), 'start');
+  assert.equal(host.game.cues.filter(cue => cue === 'start').length, 1);
+});
+
+test('known joins and explicit reconnects confirm once while device notifications remain silent', () => {
+  const host = loadHost({[remote.key]:savedProfile(remote)});
+  host.click('solo'); host.game.cues.length = 0;
+  host.key(remote, 'DPAD_CENTER'); host.key(remote, 'DPAD_CENTER', 'down', 1);
+  assert.deepEqual(host.game.cues, ['success']);
+  host.key(remote, 'DPAD_CENTER', 'up'); host.click('start-match');
+  host.game.cues.length = 0;
+  host.send(remote, {type:'device', action:'disconnected'});
+  const reconnected = {...remote, id:101};
+  host.send(reconnected, {type:'device', action:'connected'});
+  assert.deepEqual(host.game.cues, []);
+  host.tap(reconnected, 'DPAD_CENTER');
+  assert.deepEqual(host.game.cues, ['success']);
+  host.click('resume');
+  assert.deepEqual(host.game.cues, ['success','resume']);
 });

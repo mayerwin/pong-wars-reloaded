@@ -107,6 +107,7 @@ const DEFAULT_ADV = {
   particles: true,
   soundEnabled: true,
   menuMusicEnabled: true,
+  hapticsEnabled: true,
   soundVolume: 70,
   powerupFrequency: 15,
   powerupDuration: 40,
@@ -178,6 +179,7 @@ function saveSettings() {
     for (const k of Object.keys(DEFAULT_ADV)) obj[k] = settings[k];
     localStorage.setItem('pongWarsSettings', JSON.stringify(obj));
   } catch (e) { }
+  syncFeedbackSettings();
   syncWebMenuMusic();
 }
 
@@ -186,21 +188,28 @@ const audio = {
   ctx: null,
   masterGain: null,
   init() {
-    if (this.ctx) return;
+    if (this.ctx || !settings.soundEnabled || settings.soundVolume <= 0) return;
     try {
       this.ctx = new (window.AudioContext || window.webkitAudioContext)();
       this.masterGain = this.ctx.createGain();
       this.masterGain.connect(this.ctx.destination);
-      this.masterGain.gain.value = settings.soundVolume / 100;
+      this.applySettings();
     } catch (e) { }
   },
-  resume() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); },
+  resume() {
+    if (this.ctx && this.ctx.state === 'suspended') {
+      try { const pending = this.ctx.resume(); if (pending && pending.catch) pending.catch(() => {}); } catch (_) { }
+    }
+  },
+  applySettings() {
+    if (this.masterGain) this.masterGain.gain.value = settings.soundEnabled && feedbackActive ? settings.soundVolume / 100 : 0;
+  },
   setVolume(v) {
     settings.soundVolume = v;
-    if (this.masterGain) this.masterGain.gain.value = v / 100;
+    this.applySettings();
   },
   _play(fn) {
-    if (!settings.soundEnabled || !this.ctx) return;
+    if (!settings.soundEnabled || !feedbackActive || document.hidden || !this.ctx) return;
     this.resume();
     try { fn(this.ctx, this.masterGain); } catch (e) { }
   },
@@ -256,6 +265,66 @@ const audio = {
     });
   },
 };
+
+// UI cues share the game's effects context. Music remains independently optional.
+let uiFeedback = null;
+let feedbackActive = true;
+let feedbackSequence = 0;
+let feedbackTouch = false;
+let feedbackTouchAt = -Infinity;
+let hapticAt = -Infinity;
+let keyboardFocusAt = -Infinity;
+function syncFeedbackSettings() {
+  audio.applySettings();
+  if (uiFeedback) {
+    uiFeedback.setEnabled(settings.soundEnabled);
+    uiFeedback.setVolume(settings.soundVolume / 100);
+  }
+  if (!settings.hapticsEnabled) cancelHaptics();
+}
+function getFeedback() {
+  if (!uiFeedback && window.PongFeedback) {
+    uiFeedback = new window.PongFeedback({
+      audioContextFactory: () => { audio.init(); return audio.ctx; },
+      enabled: settings.soundEnabled, volume: settings.soundVolume / 100,
+    });
+    if (!feedbackActive) uiFeedback.suspend();
+  }
+  return uiFeedback;
+}
+function cancelHaptics() {
+  if (typeof navigator.vibrate === 'function' && hapticAt !== -Infinity) {
+    try { navigator.vibrate(0); } catch (_) { }
+    hapticAt = -Infinity;
+  }
+}
+function hapticFeedback(kind) {
+  const now = performance.now();
+  if (externalControls || !hasTouch || !feedbackTouch || now - feedbackTouchAt > 1000 ||
+      !settings.hapticsEnabled || !feedbackActive || document.hidden ||
+      typeof navigator.vibrate !== 'function' || now - hapticAt < 70) return;
+  const pattern = kind === 'start' ? [12, 30, 18] : kind === 'success' ? [8, 25, 8] : 8;
+  try { navigator.vibrate(pattern); hapticAt = now; } catch (_) { /* Optional device support. */ }
+}
+function playFeedback(kind, { haptic = true } = {}) {
+  if (!feedbackActive || document.hidden) return;
+  feedbackSequence++;
+  syncFeedbackSettings();
+  const player = getFeedback();
+  if (player) player.play(kind);
+  if (haptic && kind !== 'navigate') hapticFeedback(kind);
+}
+function unlockFeedback() {
+  if (!feedbackActive || document.hidden) return;
+  const player = getFeedback();
+  if (player) player.unlock();
+}
+function setFeedbackActive(active) {
+  feedbackActive = active === true && !document.hidden;
+  audio.applySettings();
+  if (uiFeedback) { if (feedbackActive) uiFeedback.resume(); else uiFeedback.suspend(); }
+  if (!feedbackActive) { cancelHaptics(); feedbackTouch = false; }
+}
 
 // ==================== GAME STATE ====================
 // AI skill: 0 (easiest) to 1 (hardest). All behavior derives from this single value.
@@ -331,6 +400,43 @@ window.addEventListener('pageshow', () => { webPageBlurred = false; resumeWebMen
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) suspendWebMenuMusic(); else resumeWebMenuMusic();
 });
+// Capture gestures before individual controls run, but confirm after the action
+// so Sound On is audible and Sound Off is immediately silent.
+document.addEventListener('pointerdown', event => {
+  if (externalControls) return;
+  keyboardFocusAt = -Infinity;
+  feedbackTouch = event.pointerType === 'touch';
+  feedbackTouchAt = performance.now();
+  unlockFeedback();
+}, true);
+document.addEventListener('keydown', event => {
+  if (externalControls || event.repeat) return;
+  feedbackTouch = false;
+  unlockFeedback();
+  // Opening a cold audio device can take longer than the focus-intent window.
+  keyboardFocusAt = event.key === 'Tab' ? performance.now() : -Infinity;
+}, true);
+document.addEventListener('focusin', event => {
+  if (externalControls || performance.now() - keyboardFocusAt > 100) return;
+  keyboardFocusAt = -Infinity;
+  if (event.target?.closest?.('button, a[role="button"], input[type="range"]')) playFeedback('navigate', { haptic: false });
+});
+document.addEventListener('click', event => { event.pongFeedbackBefore = feedbackSequence; }, true);
+document.addEventListener('click', event => {
+  if (externalControls || event.pongFeedbackBefore !== feedbackSequence) return;
+  const control = event.target?.closest?.('button, a[role="button"], .teleport-icon');
+  if (!control || control.disabled || control.closest('.disabled') || control.classList.contains('rot-btn')) return;
+  const back = ['close-settings-btn', 'close-keys-btn', 'quit-btn', 'menu-btn'].includes(control.id);
+  playFeedback(back ? 'back' : 'confirm');
+});
+document.addEventListener('input', event => {
+  if (!externalControls && event.target?.matches?.('input[type="range"]')) playFeedback('navigate', { haptic: false });
+});
+window.addEventListener('blur', () => setFeedbackActive(false));
+window.addEventListener('pagehide', () => setFeedbackActive(false));
+window.addEventListener('focus', () => setFeedbackActive(true));
+window.addEventListener('pageshow', () => setFeedbackActive(true));
+document.addEventListener('visibilitychange', () => setFeedbackActive(!document.hidden && !webPageBlurred));
 function neutralInput() { return { x: 0, y: 0, rotateLeft: false, rotateRight: false, teleport: false }; }
 let externalInput = { p1: neutralInput(), p2: neutralInput() };
 const ROT_SNAP = 45 * Math.PI / 180; // 45 degrees
@@ -1913,16 +2019,31 @@ function normalizeKey(k) { return k.length === 1 ? k.toLowerCase() : k; }
 document.addEventListener('keydown', e => {
   if (externalControls) return;
   const key = normalizeKey(e.key);
+  if (listeningBtn) { handleKeyBindPress(e); return; }
+  const focused = e.target?.closest?.('button, a[role="button"], input, select, textarea') || document.activeElement;
+  const inControl = focused && !focused.closest?.('.hidden');
+  const editing = inControl && ['INPUT', 'SELECT', 'TEXTAREA'].includes(focused.tagName);
+  if (e.repeat) {
+    if (key === 'Escape' || (!editing && ['Enter', ' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key))) e.preventDefault();
+    return;
+  }
+  if (key === 'Escape') {
+    e.preventDefault();
+    if (!document.getElementById('keybind-overlay').classList.contains('hidden')) { closeKeybindUI(); playFeedback('back'); }
+    else if (!document.getElementById('settings-overlay').classList.contains('hidden')) {
+      const before = feedbackSequence; closeSettings(); if (before === feedbackSequence) playFeedback('back');
+    } else if (game.state === 'playing' || game.state === 'paused') togglePause();
+    return;
+  }
+  if (editing) return; // Sliders and text fields keep their normal keyboard input.
+  if (inControl && (focused.tagName === 'BUTTON' || focused.getAttribute?.('role') === 'button') && (key === 'Enter' || key === ' ')) {
+    e.preventDefault(); if (!focused.disabled && !focused.closest?.('.disabled')) focused.click(); return;
+  }
   keys[key] = true;
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(key)) e.preventDefault();
-  if (listeningBtn) { handleKeyBindPress(e); return; }
-  if (e.repeat) return; // Held Escape/Enter must not repeatedly toggle menus.
-  if (key === 'Escape') {
-    if (game.state === 'playing' || game.state === 'paused') togglePause();
-    else if (!document.getElementById('keybind-overlay').classList.contains('hidden')) closeKeybindUI();
-    else if (!document.getElementById('settings-overlay').classList.contains('hidden')) closeSettings();
-  }
-  if (key === ' ' && game.state === 'menu') startGame();
+  if (key === ' ' && game.state === 'menu' &&
+      document.getElementById('settings-overlay').classList.contains('hidden') &&
+      document.getElementById('keybind-overlay').classList.contains('hidden')) { startGame(); return; }
   if (key === 'Enter') {
     // Submit the primary button of the currently visible overlay/menu
     const targets = [
@@ -1975,13 +2096,14 @@ function resumeGame() {
   document.getElementById('pause-overlay').classList.add('hidden');
   document.getElementById('settings-overlay').classList.add('hidden');
   audio.resume();
+  playFeedback('resume');
 }
 
 window.addEventListener('blur', pauseGame);
 document.addEventListener('visibilitychange', () => { if (document.hidden) pauseGame(); });
 
 function togglePause() {
-  if (game.state === 'playing') pauseGame();
+  if (game.state === 'playing') { pauseGame(); playFeedback('pause'); }
   else if (game.state === 'paused') resumeGame();
 }
 
@@ -2078,6 +2200,7 @@ function setupRotateBtn(btnId, key) {
   btn.style.touchAction = 'none';
   btn.addEventListener('pointerdown', e => {
     if (externalControls) return;
+    hapticFeedback('confirm');
     e.stopPropagation();
     btn.setPointerCapture(e.pointerId);
     mobileRotate[key] = true; btn.classList.add('pressed');
@@ -2090,6 +2213,7 @@ function setupRotateBtn(btnId, key) {
 
 // ==================== KEYBINDING UI ====================
 let listeningBtn = null;
+let keybindReturnTo = null;
 
 function keyDisplayName(key) {
   const m = {
@@ -2134,7 +2258,7 @@ function restoreListeningBtn() {
 
 function handleKeyBindPress(e) {
   e.preventDefault(); e.stopPropagation();
-  if (e.key === 'Escape') { restoreListeningBtn(); return; }
+  if (e.key === 'Escape') { restoreListeningBtn(); playFeedback('back'); return; }
   const p = listeningBtn.dataset.player, a = listeningBtn.dataset.action;
   keyBindings[p][a] = normalizeKey(e.key);
   listeningBtn.textContent = keyDisplayName(normalizeKey(e.key));
@@ -2142,22 +2266,29 @@ function handleKeyBindPress(e) {
   listeningBtn = null;
   saveSettings();
   updateControlsHelp();
+  playFeedback('success');
 }
 
-function openKeybindUI() {
+function openKeybindUI(from) {
+  keybindReturnTo = from === 'settings' ? 'settings' : 'menu';
   buildKeyBindUI();
   document.getElementById('keybind-overlay').classList.remove('hidden');
 }
 function closeKeybindUI() {
   if (listeningBtn) restoreListeningBtn();
   document.getElementById('keybind-overlay').classList.add('hidden');
+  if (keybindReturnTo === 'settings') {
+    document.getElementById('settings-overlay').classList.remove('hidden');
+    document.getElementById('settings-keys-btn').focus?.();
+  } else document.getElementById('config-keys-link').focus?.();
+  keybindReturnTo = null;
 }
 
 function updateControlsHelp() {
   const b = keyBindings;
   const el = document.getElementById('desktop-controls-help');
   if (el) {
-    el.innerHTML = `P1: ${keyDisplayName(b.p1.up)} ${keyDisplayName(b.p1.left)} ${keyDisplayName(b.p1.down)} ${keyDisplayName(b.p1.right)} + ${keyDisplayName(b.p1.rotL)}/${keyDisplayName(b.p1.rotR)} rotate &bull; P2: ${keyDisplayName(b.p2.up)} ${keyDisplayName(b.p2.left)} ${keyDisplayName(b.p2.down)} ${keyDisplayName(b.p2.right)} + ${keyDisplayName(b.p2.rotL)}/${keyDisplayName(b.p2.rotR)} rotate<br><a id="config-keys-link">Configure Keys</a> &bull; <a id="menu-settings-link">&#x2699; Settings</a> &bull; ESC: Pause`;
+    el.innerHTML = `P1: ${keyDisplayName(b.p1.up)} ${keyDisplayName(b.p1.left)} ${keyDisplayName(b.p1.down)} ${keyDisplayName(b.p1.right)} + ${keyDisplayName(b.p1.rotL)}/${keyDisplayName(b.p1.rotR)} rotate &bull; P2: ${keyDisplayName(b.p2.up)} ${keyDisplayName(b.p2.left)} ${keyDisplayName(b.p2.down)} ${keyDisplayName(b.p2.right)} + ${keyDisplayName(b.p2.rotL)}/${keyDisplayName(b.p2.rotR)} rotate<br><a id="config-keys-link" role="button" tabindex="0">Configure Keys</a> &bull; <a id="menu-settings-link" role="button" tabindex="0">&#x2699; Settings</a> &bull; ESC: Pause`;
     document.getElementById('config-keys-link').addEventListener('click', openKeybindUI);
     document.getElementById('menu-settings-link').addEventListener('click', () => openSettings('menu'));
   }
@@ -2175,6 +2306,7 @@ function openSettings(from) {
   // Grey out game-logic settings when in-game
   document.querySelectorAll('.game-logic-setting').forEach(el => {
     el.classList.toggle('disabled', isInGame);
+    el.querySelectorAll('button, input, select').forEach(control => { control.disabled = isInGame; });
   });
 
   syncSettingsUI();
@@ -2196,6 +2328,9 @@ function syncSettingsUI() {
   // Sound
   setToggle('snd-toggle', settings.soundEnabled ? 'on' : 'off');
   setToggle('music-toggle', settings.menuMusicEnabled ? 'on' : 'off');
+  setToggle('haptics-toggle', settings.hapticsEnabled ? 'on' : 'off');
+  const hapticsRow = document.getElementById('haptics-row');
+  if (hapticsRow) hapticsRow.classList.toggle('hidden', externalControls || !hasTouch || typeof navigator.vibrate !== 'function');
   document.getElementById('volume-slider').value = settings.soundVolume;
   document.getElementById('volume-label').textContent = settings.soundVolume + '%';
 
@@ -2237,6 +2372,7 @@ function setupSettingsUI() {
   const settingsToggles = {
     'snd-toggle': v => { settings.soundEnabled = v === 'on'; },
     'music-toggle': v => { settings.menuMusicEnabled = v === 'on'; },
+    'haptics-toggle': v => { settings.hapticsEnabled = v === 'on'; },
     'fx-master': v => {
       settings.effectsEnabled = v === 'on';
       document.getElementById('fx-sub').style.opacity = v === 'on' ? '1' : '0.35';
@@ -2298,6 +2434,7 @@ function setupSettingsUI() {
   const resetMap = {
     soundEnabled: () => { settings.soundEnabled = DEFAULT_ADV.soundEnabled; syncSettingsUI(); saveSettings(); },
     menuMusicEnabled: () => { settings.menuMusicEnabled = DEFAULT_ADV.menuMusicEnabled; syncSettingsUI(); saveSettings(); },
+    hapticsEnabled: () => { settings.hapticsEnabled = DEFAULT_ADV.hapticsEnabled; syncSettingsUI(); saveSettings(); },
     soundVolume: () => { settings.soundVolume = DEFAULT_ADV.soundVolume; audio.setVolume(settings.soundVolume); syncSettingsUI(); saveSettings(); },
     effectsEnabled: () => { settings.effectsEnabled = DEFAULT_ADV.effectsEnabled; syncSettingsUI(); saveSettings(); },
     screenShake: () => { settings.screenShake = DEFAULT_ADV.screenShake; syncSettingsUI(); saveSettings(); },
@@ -2329,7 +2466,7 @@ function setupSettingsUI() {
   document.getElementById('close-settings-btn').addEventListener('click', closeSettings);
   document.getElementById('settings-keys-btn').addEventListener('click', () => {
     document.getElementById('settings-overlay').classList.add('hidden');
-    openKeybindUI();
+    openKeybindUI('settings');
   });
 
   // Gear button
@@ -2534,6 +2671,7 @@ function startGame() {
 
   game.state = 'playing'; game.tickCount = 0; game.winner = null;
   syncWebMenuMusic();
+  playFeedback('start');
   game.timeRemaining = settings.winCondition === 'domination' ? Infinity : settings.duration;
   lastFrameTime = null; accumulator = 0;
   // Sync side HUDs after layout settles
@@ -2571,12 +2709,15 @@ window.PongGame = Object.freeze({
     return true;
   },
   clearInput: clearGameInput,
+  feedback: playFeedback,
+  unlockAudio: unlockFeedback,
+  setFeedbackActive,
   getSettings() {
     return JSON.parse(JSON.stringify(settings));
   },
   configure(options = {}) {
     if (!options || typeof options !== 'object' || Array.isArray(options)) throw new TypeError('Settings must be an object');
-    const booleanKeys = ['soundEnabled', 'menuMusicEnabled', 'effectsEnabled', 'freeMovement', 'mirroredPowerups',
+    const booleanKeys = ['soundEnabled', 'menuMusicEnabled', 'hapticsEnabled', 'effectsEnabled', 'freeMovement', 'mirroredPowerups',
       'screenShake', 'racketOutline', 'particles', 'gridEffect', 'progressionBar'];
     const ranges = { soundVolume: [0, 100], powerupFrequency: [5, 60], powerupDuration: [10, 120] };
     const logicKeys = ['freeMovement', 'mirroredPowerups', 'powerupFrequency', 'powerupDuration'];

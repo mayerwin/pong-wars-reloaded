@@ -128,20 +128,23 @@
       '<div class="tv-actions tv-settings">' + contents + button('options-back', 'Back') + '</div>' + footer('Select a setting to change it · Device mappings: pause → Check / change player controls'));
   }
   function dispatch(action) {
+    // Apply settings before the cue: Sound Off is silent, while switching it
+    // back on confirms the new setting. Start and Resume belong to the engine.
+    let cue = 'confirm';
     if (action === 'solo' || action === 'duo') { mode = action === 'solo' ? 'ai' : '2p'; players = []; notice = ''; lobby(); }
-    else if (action === 'start-match') { if (allReady()) start(); else lobby(); }
-    else if (action === 'watch') { mode = 'aivsai'; players = []; start(); }
+    else if (action === 'start-match') { cue = null; if (allReady()) start(); else lobby(); }
+    else if (action === 'watch') { cue = null; mode = 'aivsai'; players = []; start(); }
     else if (action === 'difficulty') { const values = ['easy', 'medium', 'hard', 'hardest']; difficulty = values[(values.indexOf(difficulty) + 1) % values.length]; home(); root.querySelector('[data-do="difficulty"]').focus(); }
     else if (action === 'duration') { duration = duration === 300 ? 60 : duration + 60; home(); root.querySelector('[data-do="duration"]').focus(); }
-    else if (action === 'home') home();
+    else if (action === 'home') { cue = 'back'; home(); }
     else if (action === 'help') help();
     else if (action === 'privacy') {
       phase = 'privacy';
       screen('<p class="tv-kicker">Pong Wars Reloaded</p><h2>Private by design.</h2><p class="tv-copy">This app works offline. It does not collect or share personal data.<br>No accounts, advertising, analytics, location or Bluetooth permissions.<br><br>Your controller identifiers, button mappings and game preferences are saved locally.<br>Clear the app’s storage or uninstall it to remove them. Android backup is disabled.<br><br>Game by Erwin Mayer, based on Pong Wars by Koen van Gilst.<br>Music: Level 1 · Juhani Junkala · CC0 (public domain).<br>Source and support: github.com/mayerwin/pong-wars-reloaded</p><div class="tv-actions">' + button('options-general', 'Back to settings') + '</div>');
     }
     else if (action === 'options') { settingsOrigin = phase === 'pause' ? 'pause' : 'home'; options('general'); }
-    else if (action === 'options-back') { if (settingsOrigin === 'pause') paused(); else home(); }
-    else if (action.startsWith('options-')) options(action.slice(8));
+    else if (action === 'options-back') { cue = 'back'; if (settingsOrigin === 'pause') paused(); else home(); }
+    else if (action.startsWith('options-')) { if (action === 'options-general') cue = 'back'; options(action.slice(8)); }
     else if (action === 'menu-music') {
       menuMusicEnabled = !menuMusicEnabled;
       try { localStorage.setItem('pongTVMenuMusic.v1', menuMusicEnabled ? 'on' : 'off'); } catch (_) { /* Keep the session preference. */ }
@@ -154,8 +157,8 @@
       const value = choices[key] ? choices[key][(choices[key].indexOf(s[key]) + 1) % choices[key].length] : !s[key];
       game.configure({[key]:value}); options(); const changed = root.querySelector('[data-do="' + action + '"]'); if (changed) changed.focus();
     }
-    else if (action === 'resume') resume();
-    else if (action === 'restart') { if (allReady()) start(); else paused('Reconnect and check all players before a rematch.'); }
+    else if (action === 'resume') { cue = null; resume(); }
+    else if (action === 'restart') { cue = null; if (allReady()) start(); else paused('Reconnect and check all players before a rematch.'); }
     else if (action === 'controls') {
       phase = 'choose-controls'; screen('<p class="tv-kicker">Device settings</p><h2>Your player controls.</h2><div class="tv-join">' + players.map((c, i) => '<div class="tv-slot"><strong>' + (i ? 'NIGHT · ' : 'DAY · ') + esc(c.device.name) + '</strong>' + bindings(c) + button('rebind-' + i, 'Change controls') + '</div>').join('') + '</div><div class="tv-actions">' + button('back-pause', 'Back to match') + '</div>', 'tv-lobby');
     } else if (action.startsWith('rebind-')) {
@@ -163,17 +166,22 @@
       calibrating = players[Number(action.slice(7))]; if (!calibrating || disconnected(calibrating)) { if (returnToPause) paused('Reconnect this controller first.'); else lobby(); return; }
       previousProfile = JSON.parse(JSON.stringify(calibrating.profile)); replacedPlayer = null;
       calibrationStep = 0; calibrating.profile = input.profile(calibrating.device); chooseConfirm();
-    } else if (action === 'back-pause') paused();
+    } else if (action === 'back-pause') { cue = 'back'; paused(); }
     else if (action === 'retry-device') { calibrationStep = 0; calibrating.profile = input.profile(calibrating.device); chooseConfirm(); }
     else if (action === 'confirm-device' && calibrating) { persist(calibrating); calibrating = null; previousProfile = null; replacedPlayer = null; const toPause = returnToPause; returnToPause = false; notice = 'Controls saved.'; if (toPause) paused(notice); else lobby(); }
+    else return;
+    if (cue) game.feedback(cue);
   }
-  root.addEventListener('click', event => { if (music) music.unlock(); const b = event.target.closest('[data-do]'); if (b && !b.disabled) dispatch(b.dataset.do); });
+  root.addEventListener('click', event => {
+    const b = event.target.closest('[data-do]');
+    if (b && !b.disabled) { game.unlockAudio(); if (music) music.unlock(); dispatch(b.dataset.do); }
+  });
   function back() {
-    if (phase === 'playing') paused();
-    else if (phase === 'pause') resume();
+    if (phase === 'playing') { paused(); game.feedback('pause'); return; }
+    else if (phase === 'pause') { resume(); return; }
     else if (phase === 'privacy') options('general');
     else if (phase === 'settings') { if (settingsOrigin === 'pause') paused(); else home(); }
-    else if (phase === 'home') { if (window.AndroidHost) AndroidHost.exit(); }
+    else if (phase === 'home') { if (window.AndroidHost) AndroidHost.exit(); else return; }
     else if (calibrating) {
       if (calibrating && previousProfile) calibrating.profile = previousProfile;
       else {
@@ -186,6 +194,12 @@
     }
     else if (phase === 'choose-controls') paused();
     else home();
+    game.feedback('back');
+  }
+  function focusFromInput(button) {
+    if (!button || button === document.activeElement) return;
+    button.focus();
+    if (document.activeElement === button) game.feedback('navigate');
   }
   function navigate(direction, now, fresh) {
     if (!fresh && direction === navHeld && now - navAt < 190) return;
@@ -193,7 +207,7 @@
     const buttons = [...root.querySelectorAll('button:not(:disabled)')];
     if (!buttons.length) return;
     const active = document.activeElement, rect = active && active.getBoundingClientRect();
-    if (!buttons.includes(active)) { buttons[0].focus(); return; }
+    if (!buttons.includes(active)) { focusFromInput(buttons[0]); return; }
     const dx = direction === 'left' ? -1 : direction === 'right' ? 1 : 0;
     const dy = direction === 'up' ? -1 : direction === 'down' ? 1 : 0;
     let best = null, cost = Infinity;
@@ -203,19 +217,20 @@
       const along = x * dx + y * dy, across = Math.abs(x * dy - y * dx);
       if (along > 2 && along + across * 3 < cost) { best = b; cost = along + across * 3; }
     }
-    if (best) best.focus();
+    focusFromInput(best);
   }
   function join(c) {
     if (players.includes(c) || players.length >= (mode === '2p' ? 2 : 1)) return;
     players.push(c); c.clear();
-    if (input.validProfile(c.profile)) lobby();
-    else { calibrating = c; previousProfile = null; replacedPlayer = null; returnToPause = false; calibrationStep = 0; chooseConfirm(); }
+    if (input.validProfile(c.profile)) { lobby(); game.feedback('success'); }
+    else { calibrating = c; previousProfile = null; replacedPlayer = null; returnToPause = false; calibrationStep = 0; chooseConfirm(); game.feedback('confirm'); }
   }
   function meaningful(e) { return (e.type === 'key' && e.action === 'down' && !e.repeat) || !!input.tokenFor(e); }
   function onInput(e) {
     const now = performance.now();
     if (e.type === 'lifecycle') {
       clear(); heldKeys.clear();
+      game.setFeedbackActive(e.action !== 'pause');
       if (e.action === 'pause') { if (phase === 'playing' || game.getState().state === 'playing') paused('Paused while the app was away.'); if (music) music.suspend(); }
       else if (music) { syncMusic(); music.resume(); }
       return;
@@ -234,7 +249,7 @@
       return;
     }
     if (!e.device) return;
-    if (music && meaningful(e)) music.unlock();
+    if (meaningful(e)) { game.unlockAudio(); if (music) music.unlock(); }
     const c = controllerFor(e.device);
     if (!heldKeys.has(e.device.id)) heldKeys.set(e.device.id, new Set());
     const held = heldKeys.get(e.device.id), wasDown = e.type === 'key' && held.has(e.code);
@@ -245,7 +260,7 @@
     if (e.type === 'motion' && e.pointer && phase !== 'playing' && phase !== 'calibration') {
       const pointed = document.elementFromPoint(e.pointer.x * innerWidth, e.pointer.y * innerHeight);
       const target = pointed && pointed.closest('#tv-root button:not(:disabled)');
-      if (target) target.focus();
+      focusFromInput(target);
     }
     const down = e.type === 'key' && e.action === 'down' && !wasDown && !e.repeat;
     if (down && ['BACK', 'ESCAPE', 'BUTTON_B', 'MOUSE_BACK'].includes(e.code)) { back(); return; }
@@ -263,13 +278,13 @@
       if (missing >= 0 && !players.includes(c)) {
         const oldPlayer = players[missing];
         players[missing] = c; clear();
-        if (input.validProfile(c.profile)) paused('Controller reconnected. Select Resume when ready.');
-        else { replacedPlayer = {index:missing, controller:oldPlayer}; previousProfile = null; calibrating = c; calibrationStep = 0; returnToPause = true; chooseConfirm(); c.ingest(e, now); }
+        if (input.validProfile(c.profile)) { paused('Controller reconnected. Select Resume when ready.'); game.feedback('success'); }
+        else { replacedPlayer = {index:missing, controller:oldPlayer}; previousProfile = null; calibrating = c; calibrationStep = 0; returnToPause = true; chooseConfirm(); c.ingest(e, now); game.feedback('confirm'); }
         return;
       }
     }
     if (phase === 'playing') {
-      if (down && c.profile.bindings.pause.includes(e.code)) paused();
+      if (down && c.profile.bindings.pause.includes(e.code)) { paused(); game.feedback('pause'); }
       else if (players.includes(c)) game.setInput(players.indexOf(c), c.sample(now));
       return;
     }
@@ -282,7 +297,7 @@
       if (down && !c.profile.bindings.pause.includes(e.code)) {
         input.setConfirm(c.profile, e.code);
         c.confirmAt = null; c.gestureUsed = true; c.rotateMode = false;
-        releaseGate = true; calibration();
+        releaseGate = true; calibration(); game.feedback('confirm');
       }
       return;
     }
@@ -298,7 +313,7 @@
     if (e.type === 'key' && e.action === 'down') {
       const dir = ['up', 'down', 'left', 'right'].find(a => c.profile.bindings[a].includes(e.code));
       if (dir) navigate(dir, now, down);
-      else if (e.code === 'TAB') navigate('down', now, true);
+      else if (e.code === 'TAB') navigate('down', now, down);
     }
   }
   window.PongAndroid = {onInput};
@@ -331,7 +346,8 @@
         const progress = document.getElementById('tv-practice-progress'); if (progress) progress.style.width = (needed ? Math.min(100, elapsed / needed * 100) : 100) + '%';
         if (elapsed >= needed) {
           calibrationStep++; releaseGate = true;
-          if (calibrationStep >= steps.length) ready(); else calibration();
+          if (calibrationStep >= steps.length) { ready(); game.feedback('success'); }
+          else { calibration(); game.feedback('confirm'); }
         }
       } else { practiceStart = null; const progress = document.getElementById('tv-practice-progress'); if (progress) progress.style.width = '0'; }
     } else {

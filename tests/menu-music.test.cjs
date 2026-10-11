@@ -105,7 +105,10 @@ test('leaving the menu fades out, releases its source and suspends; returning re
   h.music.setActive(false);
   assert.equal(h.target(), 0); assert.equal(h.music._playing, false);
   for (let i = 0; i < 5; i++) { await h.music.unlock(); h.advance(40); }
-  h.advance(100); await settle();
+  h.advance(100);
+  assert.equal(old.stops, 0, 'music is still fading at 300ms during the launch cue');
+  assert.equal(h.ctx.state, 'running');
+  h.advance(250); await settle();
   assert.equal(old.stops, 1); assert.equal(old.disconnected, true);
   assert.equal(h.music._source, null); assert.equal(h.timers.size, 0);
   assert.equal(h.ctx.state, 'suspended');
@@ -131,13 +134,25 @@ test('volume and master/music mute remain bounded and preserve cached recording'
   h.music.setVolume(0.2); assert.equal(h.target(), 0.2 * 0.25);
   h.music.setVolume(NaN); assert.equal(h.target(), 0.2 * 0.25);
   h.music.setVolume(5); assert.equal(h.target(), 0.25);
-  h.music.setEnabled(false); h.advance(300); await settle();
+  h.music.setEnabled(false); h.advance(550); await settle();
   assert.equal(h.ctx.state, 'suspended'); assert.equal(h.music._source, null);
   h.music.setEnabled(true); await settle(); assert.equal(h.music._playing, true);
-  h.music.setVolume(-1); h.advance(300); await settle();
+  h.music.setVolume(-1); h.advance(550); await settle();
   assert.equal(h.music.volume, 0); assert.equal(h.music._playing, false);
   h.music.setVolume(0.5); await settle(); assert.equal(h.music._playing, true);
   assert.equal(h.ctx.decodes, 1);
+});
+
+test('explicit mute or zero volume stops quickly while leaving the menu keeps its launch fade', async () => {
+  for (const leaving of [false, true]) for (const mute of [music => music.setEnabled(false), music => music.setVolume(0)]) {
+    const h = harness(); h.music.setActive(true); await settle(); h.advance(1000);
+    if (leaving) { h.music.setActive(false); h.advance(100); }
+    mute(h.music);
+    const fade = h.ctx.gains[0].gain.events.filter(event => event.type === 'linear').at(-1);
+    assert.ok(Math.abs(fade.at - h.ctx.currentTime - 0.03) < 1e-9);
+    h.advance(80); await settle();
+    assert.equal(h.music._source, null); assert.equal(h.ctx.state, 'suspended');
+  }
 });
 
 test('backgrounding immediately stops audio and a foreground return starts one loop', async () => {
@@ -182,7 +197,7 @@ test('mute before the first gesture cannot deadlock autoplay; late resume cannot
   h.music.setActive(true); h.music.setEnabled(false); h.music.setEnabled(true);
   delete h.ctx.resumeImpl;
   assert.equal(await h.music.unlock(), true);
-  h.music.setActive(false); h.advance(300); await settle();
+  h.music.setActive(false); h.advance(550); await settle();
   h.ctx.state = 'running'; resolveAutoplay(); await settle();
   assert.equal(h.ctx.state, 'suspended'); assert.equal(h.music._source, null);
   assert.equal(h.timers.size, 0);

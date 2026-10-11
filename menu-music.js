@@ -109,7 +109,7 @@
 
     _sync(fromGesture = false) {
       if (!this._wanted()) {
-        this._halt(this.background || this.disposed ? 0 : 0.22);
+        this._halt(this.background || this.disposed ? 0 : !this.enabled || this.volume === 0 ? 0.03 : 0.45);
         return Promise.resolve(false);
       }
       if (!this._ctx) {
@@ -233,7 +233,7 @@
     _halt(fade) {
       this._playing = false;
       if (!this._ctx) return;
-      if (this._stopTimer !== null && fade > 0) return;
+      if (this._stopTimer !== null && fade > 0 && fade >= this._gainEnvelope[1][0] - this._ctx.currentTime) return;
       if (this._stopTimer !== null) this._clearTimeout(this._stopTimer);
       this._stopTimer = null;
       if (this._ctx.state !== 'running') fade = 0;

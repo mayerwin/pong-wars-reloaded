@@ -20,7 +20,7 @@ def generatedWebAssets = layout.buildDirectory.dir('generated/gameAssets')
 // Never edit copies under app/build: change the root game or android/tv instead.
 tasks.register('syncGameAssets', Sync) {
     from(rootProject.projectDir.parentFile) {
-        include 'index.html', 'game.js', 'menu-music.js', 'style.css', 'icon.svg', 'manifest.json', 'LICENSE'
+        include 'index.html', 'game.js', 'menu-music.js', 'ui-feedback.js', 'style.css', 'icon.svg', 'manifest.json', 'LICENSE'
         include 'assets/audio/arcade-menu.mp3', 'assets/audio/LICENSE.txt'
         filesMatching('index.html') {
             filter { String line ->

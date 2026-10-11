@@ -444,7 +444,12 @@ public final class MainActivity extends Activity implements InputManager.InputDe
 
     @Override public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        if (hasFocus) immersive();
+        if (hasFocus) {
+            immersive();
+            // Focus can return after onResume (or after a system overlay).
+            // Balance focus-loss suspension without resuming a paused match.
+            if (resumed) emit(json("type", "lifecycle", "action", "resume"));
+        }
         else {
             emit(json("type", "lifecycle", "action", "pause"));
             flush();

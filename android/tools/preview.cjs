@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '../..');
 const allowed = new Set(['index.html', 'game.js', 'menu-music.js', 'style.css', 'icon.svg', 'manifest.json', 'android/tv/input.js', 'android/tv/tv.js', 'android/tv/tv.css']);
+allowed.add('ui-feedback.js');
 allowed.add('assets/audio/arcade-menu.mp3');
 http.createServer((req, res) => {
   let file = new URL(req.url, 'http://localhost').pathname.slice(1) || 'index.html';
