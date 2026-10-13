@@ -22,12 +22,21 @@ function adb(...args) {
 }
 
 async function connect() {
-  const pid = adb('shell', 'pidof', packageId).trim();
-  if (!/^\d+$/.test(pid)) throw new Error('Launch the debuggable Pong Wars Reloaded APK first.');
-  adb('forward', `tcp:${port}`, `localabstract:webview_devtools_remote_${pid}`);
-  const targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
-  const matches = targets.filter(t => t.url === 'https://appassets.androidplatform.net/assets/index.html');
-  if (matches.length !== 1) throw new Error('Expected exactly one app-owned local WebView target.');
+  // The activity can be visible before Chromium's debug socket is listening,
+  // especially after a cold restart while software-rendering the TV surface.
+  let matches = [], lastError;
+  for (const deadline = Date.now() + 8000; Date.now() < deadline;) {
+    try {
+      const pid = adb('shell', 'pidof', packageId).trim();
+      if (!/^\d+$/.test(pid)) throw new Error('Launch the debuggable Pong Wars Reloaded APK first.');
+      adb('forward', `tcp:${port}`, `localabstract:webview_devtools_remote_${pid}`);
+      const targets = await (await fetch(`http://127.0.0.1:${port}/json`, {signal:AbortSignal.timeout(1500)})).json();
+      matches = targets.filter(t => t.url === 'https://appassets.androidplatform.net/assets/index.html');
+      if (matches.length) break;
+    } catch (error) { lastError = error; }
+    await sleep(150);
+  }
+  if (matches.length !== 1) throw new Error('Expected exactly one app-owned local WebView target.' + (lastError ? ' ' + lastError.message : ''));
   const socket = new WebSocket(matches[0].webSocketDebuggerUrl);
   await new Promise((resolve,reject) => { socket.addEventListener('open',resolve,{once:true}); socket.addEventListener('error',reject,{once:true}); });
   let nextId = 0;

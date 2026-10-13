@@ -31,7 +31,9 @@
       this._loopEnd = finite(options.loopEnd) ? options.loopEnd : null;
       this._contextFactory = options.audioContextFactory || (() => {
         const Context = root.AudioContext || root.webkitAudioContext;
-        return Context ? new Context({ latencyHint: 'playback' }) : null;
+        // Menu transitions are interactive too. A playback-sized output queue
+        // can keep old music audible well after the match has visibly started.
+        return Context ? new Context({ latencyHint: 'interactive' }) : null;
       });
       this._fetch = options.fetch || (root.fetch && root.fetch.bind(root));
       this._now = options.now || Date.now;

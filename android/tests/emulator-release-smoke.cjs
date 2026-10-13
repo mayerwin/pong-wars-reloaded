@@ -19,7 +19,8 @@ async function main(){
  await shot('01-home');
  await key('DPAD_CENTER');await key('DPAD_CENTER');await key('DPAD_CENTER');
  for(const code of ['DPAD_UP','DPAD_DOWN','DPAD_LEFT','DPAD_RIGHT'])await key(code,350);
- await key('DPAD_CENTER');await key('DPAD_LEFT',350);await key('DPAD_RIGHT',350);await key('DPAD_CENTER',2900);
+ await shot('01b-optional-buttons');
+ await key('DPAD_DOWN');await key('DPAD_CENTER',1200);
  await shot('02-controls-checked');await key('DPAD_CENTER');await shot('03-ready-lobby');
  await key('DPAD_CENTER');await shot('04-playing');
  await key('BACK');await shot('05-paused');

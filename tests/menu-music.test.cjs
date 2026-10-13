@@ -1,6 +1,9 @@
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const Music = require('../menu-music.js');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
 
 class Param {
   constructor() { this.value = 0; this.events = []; }
@@ -56,6 +59,20 @@ function harness(initialState = 'running', options = {}) {
   return h;
 }
 async function settle() { for (let i = 0; i < 40; i++) await Promise.resolve(); }
+
+test('menu music requests interactive output so its fades can follow the screen', async () => {
+  let contextOptions;
+  const context = vm.createContext({
+    AudioContext: function (options) { contextOptions = options; return { state: 'closed' }; },
+    setTimeout, clearTimeout,
+  });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../menu-music.js'), 'utf8'), context);
+  const music = new context.PongMenuMusic();
+  music.setActive(true);
+  assert.equal(contextOptions.latencyHint, 'interactive');
+  assert.equal(contextOptions.sampleRate, undefined, 'use the output device rate instead of forcing a resampler');
+  await music.dispose();
+});
 
 test('inactive, muted and background music fetches nothing and creates no audio context', async () => {
   const h = harness();

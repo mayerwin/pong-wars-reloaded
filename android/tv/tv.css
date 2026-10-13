@@ -25,9 +25,10 @@ body.pong-tv #game-wrapper #container #pongCanvas {
   display: block !important; flex: 0 0 auto !important;
   width: var(--tv-board-size) !important; height: var(--tv-board-size) !important;
   aspect-ratio: 1 / 1 !important; margin: 0 !important;
-  /* The engine sizes the backing bitmap for this display; preserve vector
-     antialiasing instead of applying nearest-neighbor scaling to the board. */
-  image-rendering: auto !important;
+  /* The full-resolution backing bitmap already antialiases vector edges.
+     Avoid compositor resampling at fractional TV CSS sizes. */
+  image-rendering: pixelated !important;
+  image-rendering: crisp-edges !important;
   border-radius: 4px !important; box-shadow: 0 10px 70px #0006 !important;
 }
 body.pong-tv #game-wrapper #container #hud {
@@ -131,13 +132,24 @@ body.pong-tv:not(.game-active) #game-wrapper #container #hud { display: none !im
 .tv-device-review button { font-size: clamp(14px, 2.3vh, 27px); padding: 1.4vh 1.5vw; }
 .tv-settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.3vh 1.3vw; }
 .tv-settings > .tv-row { display: contents; }
-.tv-calibration { display: grid; grid-template-columns: 1fr 1fr; gap: 5vw; align-items: center; }
+.tv-calibration { display: grid; grid-template-columns: 1.3fr .7fr; gap: 4vw; align-items: center; }
+.tv-setup { padding-top: 4vh; padding-bottom: 9vh; }
+.tv-setup .tv-kicker { margin-bottom: 1vh !important; overflow-wrap: anywhere; }
+.tv-setup .tv-copy { font-size: clamp(12px, 2.1vh, 25px); line-height: 1.35; margin-top: 1.2vh !important; }
+.tv-action-set { display: inline-block; color: #5ee2cd; border: 1px solid #5ee2cd66; padding: .7vh .8vw; font-size: clamp(12px, 1.9vh, 23px); }
+.tv-action-set strong { color: #e3efe9; }
+.tv-step-label { color: #ffba70; font-size: clamp(12px, 1.8vh, 22px); font-weight: bold; margin: 1.8vh 0 .7vh !important; }
+.tv-optional-actions { gap: .9vh; margin-top: 1.6vh; }
+.tv-optional-actions button { min-height: 0; padding: 1.05vh 1.2vw; font-size: clamp(13px, 2.05vh, 25px); line-height: 1.2; }
+.tv-optional-actions button small { font-size: .8em; margin-top: .3em; }
 .tv-demo { border: 1px solid #45616e; background: linear-gradient(90deg, #d9e8e3 50%, #172b36 50%); height: 45vh; position: relative; overflow: hidden; }
 .tv-racket { position: absolute; background: #5ee2cd; width: 1.6vh; height: 13vh; left: 30%; top: 35%; box-shadow: 0 0 0 2px #101f29; }
-.tv-checks { display: flex; gap: .7vw; margin-top: 3vh; }
-.tv-checks span { display: grid; place-items: center; width: 4vh; height: 4vh; border: 1px solid #45616e; color: #8fa9b8; font-size: 2vh; }
-.tv-checks .done { background: #5ee2cd; color: #101f29; }
-.tv-progress { margin-top: 3vh; height: 1vh; background: #29424f; }
+.tv-checks { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .45vw; margin-top: 1.8vh; }
+.tv-checks span { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 6.5vh; padding: .5vh .1vw; border: 1px solid #45616e; color: #8fa9b8; font-size: clamp(13px, 2.1vh, 25px); }
+.tv-checks small { font-size: clamp(9px, 1.35vh, 16px); line-height: 1.2; margin-top: .35vh; }
+.tv-checks .done { border-color: #5ee2cd77; background: #193f42; color: #5ee2cd; }
+.tv-checks .current { background: #ffba70; border-color: #ffba70; color: #242018; box-shadow: 0 0 0 2px #ffba7033; }
+.tv-progress { margin-top: 2vh; height: 1vh; background: #29424f; }
 .tv-progress > div { height: 100%; background: #5ee2cd; width: 0; }
 .tv-hints { position: fixed; bottom: 4vh; left: 5vw; right: 5vw; pointer-events: none; display: flex; justify-content: space-between; align-items: flex-end; font-size: clamp(12px, 1.8vh, 22px); line-height: 1.4; color: #b5ccc9; z-index: 400; }
 .tv-hints span { width: var(--tv-side-width); overflow-wrap: anywhere; }

@@ -16,9 +16,9 @@
   try { profiles = JSON.parse(localStorage.getItem('pongTVDevices.v1')) || {}; } catch (_) { /* First launch / storage unavailable. */ }
   if (typeof profiles !== 'object' || Array.isArray(profiles)) profiles = {};
   let players = [], phase = 'home', calibrating = null, calibrationStep = 0, releaseGate = false;
-  let practiceStart = null, stepSince = 0, previousTime = performance.now(), navAt = 0, navHeld = '';
+  let practiceStart = null, previousTime = performance.now(), navAt = 0, navHeld = '';
   let difficulty = 'medium', duration = 180, mode = 'ai', notice = '', returnToPause = false;
-  let previousProfile = null, replacedPlayer = null, menuMusicEnabled = true;
+  let previousProfile = null, optionalProfile = null, replacedPlayer = null, menuMusicEnabled = true;
   try { menuMusicEnabled = localStorage.getItem('pongTVMenuMusic.v1') !== 'off'; } catch (_) { /* Use the default. */ }
   const music = window.PongMenuMusic ? new window.PongMenuMusic({enabled:menuMusicEnabled && game.getSettings().soundEnabled, volume:game.getSettings().soundVolume / 100}) : null;
   let settingsOrigin = 'home', settingsSection = 'general', winCondition = 'combined';
@@ -55,7 +55,7 @@
   const playerCount = () => mode === 'aivsai' ? 0 : mode === '2p' ? 2 : 1;
   const allReady = () => players.length === playerCount() && !players.some(unavailable);
   function home() {
-    phase = 'home'; clear(); game.showMenu(); returnToPause = false; previousProfile = null; replacedPlayer = null; calibrating = null;
+    phase = 'home'; clear(); game.showMenu(); returnToPause = false; previousProfile = null; optionalProfile = null; replacedPlayer = null; calibrating = null;
     screen('<div class="tv-home"><div><div class="tv-art" aria-hidden="true"><span></span><span></span></div><p class="tv-kicker">A battle for every square</p><h1>PONG WARS<span>RELOADED</span></h1><p class="tv-copy">Your couch. Your controls.<br>Day versus night.</p></div><div><div class="tv-actions">' +
       button('solo', 'One player', 'Take on the AI') + button('duo', 'Two players', 'Two devices · one screen') +
       button('watch', 'Watch a match', 'AI versus AI') + '<div class="tv-row">' + button('difficulty', 'AI: ' + difficulty) + button('duration', duration / 60 + ' minutes') + '</div>' +
@@ -71,22 +71,49 @@
     const startButton = root.querySelector('[data-do="start-match"]'); if (startButton) startButton.focus();
   }
   const stepTitles = {up: 'Move up', down: 'Move down', left: 'Move left', right: 'Move right', rotateLeft: 'Rotate left', rotateRight: 'Rotate right', teleport: 'Rescue your ball'};
-  function calibration() {
-    phase = 'calibration'; stepSince = performance.now(); practiceStart = null;
-    const step = steps[calibrationStep];
-    const help = calibrationStep < 4 ? 'Briefly hold the direction you want. Any keyboard key, direction pad, stick or mouse movement can be learned.' : calibrationStep < 6 ?
-      'Use a shoulder button, Q / E or mouse wheel. With a remote: tap ' + esc(actionName(calibrating)) + ' to switch to rotation, then press ' + (step === 'rotateLeft' ? 'left / up.' : 'right / down.') :
-      'Hold ' + esc(actionName(calibrating)) + ' for 2½ seconds, or hold X / Y / T for 2 seconds. Rescue brings a ball back to your racket.';
-    screen('<div class="tv-calibration"><div><p class="tv-kicker">' + (players.indexOf(calibrating) ? 'Night' : 'Day') + ' · ' + esc(calibrating.device.name) + '</p><h2>' + stepTitles[step] + '</h2><p class="tv-copy">' + help + '</p><div class="tv-checks">' +
-      steps.map((_, i) => '<span class="' + (i < calibrationStep ? 'done' : '') + '">' + (i < calibrationStep ? '✓' : i + 1) + '</span>').join('') + '</div><div class="tv-progress"><div id="tv-practice-progress"></div></div><p class="tv-copy" id="tv-input-feedback">Try it now.</p></div><div class="tv-demo"><div class="tv-racket" id="tv-demo-racket"></div></div></div>' + footer('Release between steps · Back cancels setup · All seven gameplay actions are checked'));
+  function calibration(teachOptional = false) {
+    const step = steps[calibrationStep], optional = calibrationStep >= 4;
+    phase = optional && !teachOptional ? 'optional-buttons' : 'calibration'; practiceStart = null;
+    if (phase === 'optional-buttons' && optionalProfile) {
+      // Returning from an unfinished hold must not save a partly taught button
+      // when the player chooses the action-button shortcut instead.
+      calibrating.profile = optionalProfile; optionalProfile = null;
+    }
+    if (teachOptional) optionalProfile = JSON.parse(JSON.stringify(calibrating.profile));
+    // Menu selection never arms the tap/hold gameplay shortcuts. Keep physical
+    // keys/axes intact until released so a held input cannot pass another step.
+    calibrating.rotateMode = false; calibrating.confirmAt = null; calibrating.gestureUsed = true;
+    const action = esc(actionName(calibrating));
+    const shortcut = step === 'teleport' ? 'Hold ' + action + ' for 2½ seconds to rescue your ball.' :
+      'Tap ' + action + ' to switch to rotation, then use ' + esc(input.tokenLabel(calibrating.profile.learned[step === 'rotateLeft' ? 'left' : 'right'])) + '.';
+    const help = !optional ? 'Briefly press or move the direction you want. Direction pads, sticks, keyboard keys and mouse movement all work.' :
+      teachOptional ? (step === 'teleport' ? 'Hold a spare button for 2 seconds. ' : 'Press a spare button or trigger, or move the mouse wheel. ') + 'Press ' + action + ' to return to the skip choices.' :
+      'A separate button is optional. Your action button already does this:<br>' + shortcut;
+    const checks = steps.map((name, i) => '<span class="' + (i < calibrationStep ? 'done' : i === calibrationStep ? 'current' : '') + '"' +
+      (i === calibrationStep ? ' aria-current="step"' : '') + '><b>' + (i < calibrationStep ? '✓' : i + 1) + '</b><small>' +
+      (i === calibrationStep ? 'Current' : i < calibrationStep ? (i >= 4 && !calibrating.profile.learned[name] ? 'Shortcut' : 'Set') : i >= 4 ? 'Optional' : 'Move') + '</small></span>').join('');
+    const choices = phase === 'optional-buttons' ? '<div class="tv-actions tv-optional-actions">' +
+      button('skip-optional', 'Use action button · skip this') + button('skip-all-optional', 'Skip all remaining extras', 'Rotation and rescue still work with ' + action) +
+      button('teach-optional', 'Teach a separate button') + '</div>' : '<div class="tv-progress"><div id="tv-practice-progress"></div></div><p class="tv-copy" id="tv-input-feedback">Try it now.</p>';
+    screen('<div class="tv-calibration"><div><p class="tv-kicker">' + (players.indexOf(calibrating) ? 'Night' : 'Day') + ' · ' + esc(calibrating.device.name) + '</p>' +
+      '<p class="tv-action-set">✓ Action button set: <strong>' + action + '</strong></p><p class="tv-step-label">Step ' + (calibrationStep + 1) + ' of 7' + (optional ? ' · Optional extra button' : ' · Movement') + '</p>' +
+      '<h2>' + stepTitles[step] + '</h2><p class="tv-copy">' + help + '</p><div class="tv-checks" aria-label="Setup progress">' + checks + '</div>' + choices + '</div>' +
+      '<div class="tv-demo"><div class="tv-racket" id="tv-demo-racket"></div></div></div>' +
+      footer((phase === 'optional-buttons' ? 'Directions choose · ' + action + ' selects' : 'Release between steps') + ' · Back cancels setup · Only action + four directions are required'), 'tv-setup');
+  }
+  function advanceCalibration(skipAll = false) {
+    optionalProfile = null;
+    calibrationStep = skipAll ? steps.length : calibrationStep + 1; releaseGate = true;
+    if (calibrationStep >= steps.length) { ready(); game.feedback('success'); }
+    else { calibration(); game.feedback('confirm'); }
   }
   function chooseConfirm() {
-    phase = 'confirm-key'; clear(); releaseGate = true;
+    phase = 'confirm-key'; clear(); releaseGate = true; optionalProfile = null;
     screen('<p class="tv-kicker">' + esc(calibrating.device.name) + '</p><h2>Choose your action button.</h2><p class="tv-copy">Release the button you used to join, then press the button you want for OK.<br>Use the center button on a remote, A on a gamepad, Enter on a keyboard,<br>or the left mouse button. An unusual keyboard can use any spare key.<br><br>This button selects menus, switches movement / rotation, and rescues your ball when held.</p>' + footer('Keep four other directions available for movement · Back cancels'));
   }
   function ready() {
     phase = 'ready'; clear();
-    screen('<div class="tv-device-review"><p class="tv-kicker">Controls checked · ' + esc(calibrating.device.name) + '</p><h2>You’re ready, ' + (players.indexOf(calibrating) ? 'Night.' : 'Day.') + '</h2>' + bindings(calibrating) + '<div class="tv-actions">' + button('confirm-device', 'Save controls & continue') + button('retry-device', 'Choose buttons again') + '</div></div>' + footer('Release the rescue button, then select Save · Your settings stay on this TV.'));
+    screen('<div class="tv-device-review"><p class="tv-kicker">Controls ready · ' + esc(calibrating.device.name) + '</p><h2>You’re ready, ' + (players.indexOf(calibrating) ? 'Night.' : 'Day.') + '</h2>' + bindings(calibrating) + '<div class="tv-actions">' + button('confirm-device', 'Save controls & continue') + button('retry-device', 'Choose buttons again') + '</div></div>' + footer('Release your button, then select Save · Your settings stay on this TV.'));
   }
   function start() {
     clear(); phase = 'playing'; root.innerHTML = ''; capture(true);
@@ -119,7 +146,7 @@
       rule('setting-powerupDuration', 'Powerup lasts ' + s.powerupDuration + ' seconds') + button('options-general', 'Sound & display');
     else if (section === 'visuals') contents =
       toggle('screenShake', 'Screen shake') + toggle('racketOutline', 'Racket outline') + toggle('particles', 'Particles') +
-      toggle('gridEffect', 'Grid lines') + toggle('progressionBar', 'Territory progress bar') + button('options-general', 'Sound & display');
+      toggle('gridEffect', 'Grid lines') + toggle('progressionBar', 'Territory progress bar') + button('diagnostics', 'TV diagnostics') + button('options-general', 'Sound & display');
     else contents = toggle('soundEnabled', 'Sound') + button('menu-music', 'Menu music: ' + (menuMusicEnabled ? 'On' : 'Off')) + button('setting-soundVolume', 'Volume: ' + s.soundVolume + '%') +
       button('setting-theme', 'Color theme: ' + s.theme) + toggle('effectsEnabled', 'Visual effects') +
       '<div class="tv-row">' + button('options-visuals', 'Visual details') + button('options-rules', 'Match rules') + '</div>' + button('privacy', 'Privacy & credits');
@@ -138,6 +165,16 @@
     else if (action === 'duration') { duration = duration === 300 ? 60 : duration + 60; home(); root.querySelector('[data-do="duration"]').focus(); }
     else if (action === 'home') { cue = 'back'; home(); }
     else if (action === 'help') help();
+    else if (action === 'diagnostics') {
+      phase = 'diagnostics';
+      const info = game.getDiagnostics ? game.getDiagnostics() : {}, display = info.display || {}, renderer = info.renderer || {}, audio = info.audio || {};
+      const size = (width, height) => width && height ? esc(width) + ' × ' + esc(height) : 'Not reported';
+      const rows = [['TV output', size(display.outputWidth, display.outputHeight)], ['App surface', size(display.windowWidth, display.windowHeight)],
+        ['Game canvas', size(renderer.width, renderer.height)], ['Refresh rate', display.refreshRate ? esc(Math.round(display.refreshRate * 10) / 10) + ' Hz' : 'Not reported'],
+        ['Sound backend', esc(audio.backend || 'Not reported') + (audio.ready === false ? ' · warming up' : '')]];
+      screen('<div class="tv-device-review"><p class="tv-kicker">Display & audio</p><h2>TV diagnostics</h2><dl class="tv-bindings">' + rows.map(([label, value]) => '<div><dt>' + label + '</dt><dd>' + value + '</dd></div>').join('') + '</dl>' +
+        '<p class="tv-copy">The app surface is the resolution Android gives this game. It can differ from your TV’s output resolution.</p><div class="tv-actions">' + button('options-visuals', 'Back to visual details') + '</div></div>');
+    }
     else if (action === 'privacy') {
       phase = 'privacy';
       screen('<p class="tv-kicker">Pong Wars Reloaded</p><h2>Private by design.</h2><p class="tv-copy">This app works offline. It does not collect or share personal data.<br>No accounts, advertising, analytics, location or Bluetooth permissions.<br><br>Your controller identifiers, button mappings and game preferences are saved locally.<br>Clear the app’s storage or uninstall it to remove them. Android backup is disabled.<br><br>Game by Erwin Mayer, based on Pong Wars by Koen van Gilst.<br>Music: Level 1 · Juhani Junkala · CC0 (public domain).<br>Source and support: github.com/mayerwin/pong-wars-reloaded</p><div class="tv-actions">' + button('options-general', 'Back to settings') + '</div>');
@@ -168,6 +205,14 @@
       calibrationStep = 0; calibrating.profile = input.profile(calibrating.device); chooseConfirm();
     } else if (action === 'back-pause') { cue = 'back'; paused(); }
     else if (action === 'retry-device') { calibrationStep = 0; calibrating.profile = input.profile(calibrating.device); chooseConfirm(); }
+    else if (action === 'skip-optional' || action === 'skip-all-optional') {
+      if (phase !== 'optional-buttons' || !calibrating) return;
+      advanceCalibration(action === 'skip-all-optional'); cue = null;
+    }
+    else if (action === 'teach-optional') {
+      if (phase !== 'optional-buttons' || !calibrating) return;
+      releaseGate = true; calibration(true);
+    }
     else if (action === 'confirm-device' && calibrating) { persist(calibrating); calibrating = null; previousProfile = null; replacedPlayer = null; const toPause = returnToPause; returnToPause = false; notice = 'Controls saved.'; if (toPause) paused(notice); else lobby(); }
     else return;
     if (cue) game.feedback(cue);
@@ -180,6 +225,7 @@
     if (phase === 'playing') { paused(); game.feedback('pause'); return; }
     else if (phase === 'pause') { resume(); return; }
     else if (phase === 'privacy') options('general');
+    else if (phase === 'diagnostics') options('visuals');
     else if (phase === 'settings') { if (settingsOrigin === 'pause') paused(); else home(); }
     else if (phase === 'home') { if (window.AndroidHost) AndroidHost.exit(); else return; }
     else if (calibrating) {
@@ -257,7 +303,7 @@
     // A key held while Start/Resume cleared game input belongs to the old
     // screen until released. Native repeat events must not re-arm its hold.
     if (!(e.type === 'key' && e.action === 'down' && wasDown && !c.keys.has(e.code))) c.ingest(e, now);
-    if (e.type === 'motion' && e.pointer && phase !== 'playing' && phase !== 'calibration') {
+    if (e.type === 'motion' && e.pointer && phase !== 'playing' && phase !== 'calibration' && (phase !== 'optional-buttons' || c === calibrating)) {
       const pointed = document.elementFromPoint(e.pointer.x * innerWidth, e.pointer.y * innerHeight);
       const target = pointed && pointed.closest('#tv-root button:not(:disabled)');
       focusFromInput(target);
@@ -265,6 +311,7 @@
     const down = e.type === 'key' && e.action === 'down' && !wasDown && !e.repeat;
     if (down && ['BACK', 'ESCAPE', 'BUTTON_B', 'MOUSE_BACK'].includes(e.code)) { back(); return; }
     if (down && phase !== 'playing' && phase !== 'lobby' && ['MOUSE_SECONDARY', 'BUTTON_START'].includes(e.code)) { back(); return; }
+    if (phase === 'optional-buttons' && c !== calibrating) return;
     if (phase === 'lobby') {
       if (!players.includes(c) && (down || (e.type === 'motion' && meaningful(e)))) {
         join(c);
@@ -303,11 +350,15 @@
     }
     if (phase === 'calibration') {
       if (c !== calibrating) return;
-      if (releaseGate) { if (e.action === 'up') releaseGate = false; return; }
+      if (releaseGate) { if (e.action === 'up' && c.isIdle(now) && !held.size) releaseGate = false; return; }
+      if (calibrationStep >= 4 && down && c.profile.bindings.confirm.includes(e.code)) {
+        releaseGate = true; calibration(); game.feedback('back'); return;
+      }
       // Learn arbitrary directional keys/axes. Keep confirm and Back available for the remote scheme.
       input.learn(c.profile, steps[calibrationStep], e, steps.slice(0, calibrationStep));
       return;
     }
+    if (phase === 'optional-buttons' && releaseGate) { if (e.action === 'up' && c.isIdle(now) && !held.size) releaseGate = false; return; }
     if (phase === 'ready' && c !== calibrating) return;
     if (down && (c.profile.bindings.confirm.includes(e.code) || (phase === 'home' && !Object.values(c.profile.bindings).some(tokens => tokens.includes(e.code))))) { const b = document.activeElement; if (b && root.contains(b)) b.click(); return; }
     if (e.type === 'key' && e.action === 'down') {
@@ -334,10 +385,10 @@
       if (releaseGate && calibrating.isIdle(now) && !(heldKeys.get(calibrating.device.id) || new Set()).size) releaseGate = false;
     } else if (phase === 'calibration' && calibrating) {
       const s = calibrating.sample(now), step = steps[calibrationStep];
-      if (releaseGate && calibrating.isIdle(now)) releaseGate = false;
-      const active = step === 'up' ? s.y < -.2 : step === 'down' ? s.y > .2 : step === 'left' ? s.x < -.2 : step === 'right' ? s.x > .2 : s[step];
+      if (releaseGate && calibrating.isIdle(now) && !(heldKeys.get(calibrating.device.id) || new Set()).size) releaseGate = false;
+      const active = step === 'up' ? s.y < -.2 : step === 'down' ? s.y > .2 : step === 'left' ? s.x < -.2 : step === 'right' ? s.x > .2 : !!calibrating.profile.learned[step] && s[step];
       const feedback = document.getElementById('tv-input-feedback');
-      if (feedback) feedback.textContent = calibrating.rotateMode ? 'Rotation mode · tap ' + actionName(calibrating) + ' to move.' : 'Movement mode · tap ' + actionName(calibrating) + ' to rotate.';
+      if (feedback) feedback.textContent = releaseGate ? 'Release your controls to continue.' : calibrationStep >= 4 ? 'Listening for a separate button · ' + actionName(calibrating) + ' returns to skip choices.' : 'Listening for ' + stepTitles[step].toLowerCase() + '…';
       const racket = document.getElementById('tv-demo-racket');
       if (racket) racket.style.transform = 'translate(' + s.x * 45 + 'px,' + s.y * 45 + 'px) rotate(' + (s.rotateLeft ? -45 : s.rotateRight ? 45 : 0) + 'deg)';
       if (active && !releaseGate) {
@@ -345,13 +396,13 @@
         const elapsed = now - practiceStart, needed = step === 'teleport' ? 2000 : 0;
         const progress = document.getElementById('tv-practice-progress'); if (progress) progress.style.width = (needed ? Math.min(100, elapsed / needed * 100) : 100) + '%';
         if (elapsed >= needed) {
-          calibrationStep++; releaseGate = true;
-          if (calibrationStep >= steps.length) { ready(); game.feedback('success'); }
-          else { calibration(); game.feedback('confirm'); }
+          advanceCalibration();
         }
       } else { practiceStart = null; const progress = document.getElementById('tv-practice-progress'); if (progress) progress.style.width = '0'; }
     } else {
+      if (phase === 'optional-buttons' && releaseGate && calibrating.isIdle(now) && !(heldKeys.get(calibrating.device.id) || new Set()).size) releaseGate = false;
       devices.forEach(c => {
+        if (phase === 'optional-buttons' && (c !== calibrating || releaseGate)) return;
         const a = c.axes || {}, x = Math.abs(a.hatX || 0) > .5 ? a.hatX : a.x || a.z || 0, y = Math.abs(a.hatY || 0) > .5 ? a.hatY : a.y || a.rz || 0;
         if (Math.max(Math.abs(x), Math.abs(y)) > .55) navigate(Math.abs(x) > Math.abs(y) ? (x < 0 ? 'left' : 'right') : (y < 0 ? 'up' : 'down'), now, false);
       });

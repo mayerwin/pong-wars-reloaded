@@ -60,6 +60,48 @@ function harness(state = 'running', ownContext = false) {
 }
 async function settle() { for (let i = 0; i < 20; i++) await Promise.resolve(); }
 
+test('ready native output skips Web Audio while retaining cue throttling and start suppression', async () => {
+  const h = harness(), calls = [];
+  h.feedback._nativeReady = () => true;
+  h.feedback._nativePlay = (kind, volume) => { calls.push({ kind, volume }); return true; };
+  assert.equal(await h.feedback.unlock(), true);
+  assert.equal(await h.feedback.play('navigate'), true);
+  assert.equal(await h.feedback.play('navigate'), false);
+  assert.equal(await h.feedback.play('start'), true);
+  h.advance(200);
+  assert.equal(await h.feedback.play('navigate'), false);
+  assert.equal(await h.feedback.play('confirm'), false);
+  h.advance(400);
+  assert.equal(await h.feedback.play('confirm'), true);
+  assert.deepEqual(calls.map(call => call.kind), ['navigate', 'start', 'confirm']);
+  assert.ok(calls.every(call => call.volume === .7));
+  assert.equal(h.creates, 0); assert.equal(h.ctx.sources.length, 0);
+  h.feedback.setEnabled(false);
+  assert.equal(await h.feedback.unlock(), false);
+  assert.equal(await h.feedback.play('back'), false);
+  h.feedback.setEnabled(true); await h.feedback.suspend();
+  assert.equal(await h.feedback.play('resume'), false);
+  assert.equal(calls.length, 3);
+});
+
+test('unavailable native output falls back immediately and a later native cue clears blocked web work', async () => {
+  const h = harness();
+  h.feedback._nativePlay = () => false;
+  assert.equal(await h.feedback.play('back'), true);
+  assert.equal(h.ctx.sources.length, 2);
+  h.feedback._nativePlay = () => { throw new Error('bridge unavailable'); };
+  assert.equal(await h.feedback.play('confirm'), true);
+  assert.equal(h.ctx.sources.length, 4);
+
+  const cold = harness('suspended'); let resume;
+  cold.ctx.resumeImpl = () => new Promise(resolve => { resume = resolve; });
+  const pending = cold.feedback.play('navigate');
+  cold.feedback._nativePlay = () => true;
+  assert.equal(await cold.feedback.play('start'), true);
+  cold.ctx.state = 'running'; resume(); await pending;
+  assert.equal(cold.ctx.sources.length, 0, 'no stale web cue after native playback becomes ready');
+});
+
 test('disabled, silent or background feedback allocates nothing and ignores unknown cues', async () => {
   const h = harness();
   assert.equal(await h.feedback.play('unknown'), false);

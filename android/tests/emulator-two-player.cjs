@@ -9,13 +9,23 @@ const output=path.resolve(__dirname,'../app/build/qa');
 async function main(){
  let app=await connect(),pads;const checkpoints=[];
  const check=async label=>{const s=await app.snapshot();checkpoints.push({label,...s});console.log(label+': '+s.title+' / '+s.game.state);return s;};
- async function teach(id){
+ async function teach(id,extras=true){
   await pads.key(id,'BUTTON_A');await app.waitFor(s=>s.title.includes('Choose your action'),'Expected action choice');
   await pads.key(id,'BUTTON_A');await app.waitFor(s=>s.title==='Move up','Expected first direction');
-  for(const [key,next]of [['DPAD_UP','Move down'],['DPAD_DOWN','Move left'],['DPAD_LEFT','Move right'],['DPAD_RIGHT','Rotate left'],['BUTTON_L1','Rotate right'],['BUTTON_R1','Rescue your ball']]){
+  for(const [key,next]of [['DPAD_UP','Move down'],['DPAD_DOWN','Move left'],['DPAD_LEFT','Move right'],['DPAD_RIGHT','Rotate left']]){
    await pads.key(id,key,350);await app.waitFor(s=>s.title===next,'Expected '+next);
   }
-  await pads.key(id,'BUTTON_X',2300);await app.waitFor(s=>s.title.includes('ready'),'Expected all seven checks');
+  if(extras){
+   for(const [key,next]of [['BUTTON_L1','Rotate right'],['BUTTON_R1','Rescue your ball'],['BUTTON_X','You’re ready, '+(id===1?'Day.':'Night.')]]){
+    await pads.key(id,'DPAD_DOWN');await pads.key(id,'DPAD_DOWN');
+    assert.equal((await app.snapshot()).buttons.find(b=>b.focused).action,'teach-optional');
+    await pads.key(id,'BUTTON_A');
+    await pads.key(id,key,key==='BUTTON_X'?2300:350);await app.waitFor(s=>s.title===next,'Expected '+next);
+   }
+  }else{
+   await pads.key(id,'DPAD_DOWN');await pads.key(id,'BUTTON_A',1200,true);
+   await app.waitFor(s=>s.title.includes('ready'),'Expected skipped extras review');
+  }
  }
  const ready=async()=>app.waitFor(s=>s.title==='Your controls. Your match.','Expected two-player review');
  async function reconnect(){
@@ -27,9 +37,15 @@ async function main(){
   await app.waitFor(s=>s.title.includes('PONG WARS'),'Expected home');await app.click('duo');
   await teach(1);await pads.key(1,'BUTTON_A',1200,true);
   const p1=await check('P1-saved-waits-for-P2');assert.ok(p1.title.includes('Pick up'));assert.equal(p1.game.state,'menu');assert.ok(p1.text.includes('Pong QA Pad 1'));
-  await teach(2);await pads.key(2,'BUTTON_A',1200,true);const p2=await ready();
+  await teach(2,false);await pads.key(2,'BUTTON_A',1200,true);const p2=await ready();
   assert.equal(p2.game.state,'menu');assert.ok(p2.text.includes('Pong QA Pad 1')&&p2.text.includes('Pong QA Pad 2'));
   assert.ok(p2.text.includes('LB')&&p2.text.includes('RB'),'Review should show learned shoulders');await check('both-saved-review');
+  assert.ok(p2.text.includes('Tap A / Cross, then D-pad'),'Second player keeps action-button shortcuts');
+  // CDP observes layout before the emulator's compositor presents it. Let the
+  // saved-controller screen settle so screencap cannot mix transition frames.
+  await app.sleep(500);
+  const kickerTop=await app.evaluate("document.querySelector('#tv-root .tv-kicker').getBoundingClientRect().top");
+  assert.ok(kickerTop>0,'Lobby heading must retain its TV safe-area padding');
   await app.screenshot(path.join(output,'native-two-player-controls.png'));
   for(const id of [0,1]){
    await app.click('rebind-'+id);await app.waitFor(s=>s.title.includes('Choose your action'),'Change controls should reopen setup');
@@ -57,6 +73,7 @@ async function main(){
   await app.close();adb('shell','am','force-stop','com.github.pongwarsreloaded.sideload');adb('shell','am','start','-n','com.github.pongwarsreloaded.sideload/com.github.pongwarsreloaded.MainActivity');await sleep(800);app=await connect();
   await app.observeMusic();await app.click('duo');await pads.key(1,'BUTTON_A');assert.ok((await app.snapshot()).title.includes('Pick up'),'Saved P1 should skip calibration');
   await pads.key(2,'BUTTON_A');const reused=await ready();assert.ok(reused.text.includes('LB')&&reused.text.includes('RB'));assert.equal((await app.musicState()).enabled,false);assert.equal((await app.musicState()).playing,false);
+  assert.ok(reused.text.includes('Tap A / Cross, then D-pad'),'Skipped mappings survive app restart');
   await check('restart-saved-profiles-and-music');await app.screenshot(path.join(output,'native-reused-controls.png'));
   await pads.key(1,'BUTTON_A');await app.waitFor(s=>s.game.state==='playing','Saved profiles start immediately');await check('reused-profiles-playing');
   assert.equal(app.errors.length,0,JSON.stringify(app.errors));

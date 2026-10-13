@@ -43,6 +43,10 @@
         const Context = root.AudioContext || root.webkitAudioContext;
         return Context ? new Context({ latencyHint: 'interactive' }) : null;
       });
+      // Android can provide preloaded native effects. It owns their lifecycle;
+      // this class still owns the same cue throttling and start suppression.
+      this._nativePlay = typeof options.nativePlay === 'function' ? options.nativePlay : null;
+      this._nativeReady = typeof options.nativeReady === 'function' ? options.nativeReady : null;
       this._now = options.now || (() => root.performance ? root.performance.now() : Date.now());
       this._setTimeout = options.setTimeout || root.setTimeout.bind(root);
       this._clearTimeout = options.clearTimeout || root.clearTimeout.bind(root);
@@ -76,7 +80,9 @@
     }
 
     unlock() {
-      if (!this._wanted() || !this._ensureContext()) return Promise.resolve(false);
+      if (!this._wanted()) return Promise.resolve(false);
+      try { if (this._nativeReady && this._nativeReady()) return Promise.resolve(true); } catch (_) { }
+      if (!this._ensureContext()) return Promise.resolve(false);
       return this._resumeContext(true);
     }
 
@@ -85,12 +91,18 @@
       const now = this._now();
       if ((kind === 'navigate' || kind === 'confirm') && now < this._startUntil) return Promise.resolve(false);
       if (now - (this._lastCueAt.get(kind) ?? -Infinity) < COOLDOWN[kind]) return Promise.resolve(false);
-      if (!this._ensureContext()) return Promise.resolve(false);
+      let nativePlayed = false;
+      try { nativePlayed = !!this._nativePlay && this._nativePlay(kind, this.volume) === true; } catch (_) { }
+      if (!nativePlayed && !this._ensureContext()) return Promise.resolve(false);
       this._lastCueAt.set(kind, now);
       if (kind === 'start') {
         this._startUntil = now + COOLDOWN.start;
         this._cancelKinds(['navigate', 'confirm']);
       } else this._cancelKinds([kind]);
+      if (nativePlayed) {
+        this._pending = null;
+        return Promise.resolve(true);
+      }
       // One pending cue, replaced by the latest action. An old blocked autoplay
       // promise must not replay a trail of navigation sounds after a gesture.
       const request = { kind, at: now, played: false };

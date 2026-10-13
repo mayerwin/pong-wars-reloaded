@@ -51,6 +51,7 @@ public final class MainActivity extends Activity implements InputManager.InputDe
     private WebView webView;
     private InputManager inputManager;
     private DisplayManager displayManager;
+    private NativeAudio nativeAudio;
     private volatile String displayInfo = "{}";
     private boolean ready;
     private boolean frameScheduled;
@@ -60,6 +61,7 @@ public final class MainActivity extends Activity implements InputManager.InputDe
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        nativeAudio = new NativeAudio(this);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         inputManager = (InputManager) getSystemService(INPUT_SERVICE);
         displayManager = (DisplayManager) getSystemService(DISPLAY_SERVICE);
@@ -105,6 +107,7 @@ public final class MainActivity extends Activity implements InputManager.InputDe
 
             @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap icon) {
                 ready = false;
+                if (nativeAudio != null) nativeAudio.stopAll();
                 pending.clear();
             }
         });
@@ -156,6 +159,12 @@ public final class MainActivity extends Activity implements InputManager.InputDe
 
     private final class HostBridge {
         @JavascriptInterface public String getDisplayInfo() { return displayInfo; }
+        @JavascriptInterface public boolean isNativeAudioReady() { return nativeAudio != null && nativeAudio.isReady(); }
+        @JavascriptInterface public boolean playSound(String cue, double volume) {
+            return nativeAudio != null && nativeAudio.playSound(cue, volume);
+        }
+        @JavascriptInterface public void stopSounds() { if (nativeAudio != null) nativeAudio.stopAll(); }
+        @JavascriptInterface public String getAudioInfo() { return nativeAudio == null ? "{}" : nativeAudio.diagnostics(); }
         @JavascriptInterface public void ready() {
             runOnUiThread(() -> {
                 ready = true;
@@ -424,6 +433,7 @@ public final class MainActivity extends Activity implements InputManager.InputDe
     @Override protected void onResume() {
         super.onResume();
         resumed = true;
+        if (nativeAudio != null) nativeAudio.setActive(webView != null && webView.hasWindowFocus());
         if (webView != null) configureDisplay();
         if (webView != null) webView.onResume();
         pointerPositions.clear();
@@ -435,6 +445,7 @@ public final class MainActivity extends Activity implements InputManager.InputDe
 
     @Override protected void onPause() {
         resumed = false;
+        if (nativeAudio != null) nativeAudio.setActive(false);
         emit(json("type", "lifecycle", "action", "pause"));
         flush();
         updatePointerCapture();
@@ -444,6 +455,7 @@ public final class MainActivity extends Activity implements InputManager.InputDe
 
     @Override public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
+        if (nativeAudio != null) nativeAudio.setActive(hasFocus && resumed);
         if (hasFocus) {
             immersive();
             // Focus can return after onResume (or after a system overlay).
@@ -460,6 +472,7 @@ public final class MainActivity extends Activity implements InputManager.InputDe
     }
 
     @Override protected void onDestroy() {
+        if (nativeAudio != null) nativeAudio.release();
         ready = false;
         pending.clear();
         if (inputManager != null) inputManager.unregisterInputDeviceListener(this);

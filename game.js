@@ -59,7 +59,9 @@ applyTouchMode();
 
 // ==================== DOM REFS ====================
 const canvas = document.getElementById("pongCanvas");
-const ctx = canvas.getContext("2d");
+// Every frame paints an opaque board. Avoid allocating/compositing an alpha
+// surface at TV resolutions; vector edges still retain their antialiasing.
+const ctx = canvas.getContext("2d", { alpha: false });
 let canvasResolutionDirty = true;
 let canvasPixelRatio = 0;
 
@@ -69,12 +71,22 @@ function syncCanvasResolution() {
   const ratio = window.devicePixelRatio;
   const pixelRatio = Number.isFinite(ratio) && ratio > 0 ? ratio : 1;
   if (!canvasResolutionDirty && canvasPixelRatio === pixelRatio) return;
-  const { width, height } = canvas.getBoundingClientRect();
+  // Flex centering and vh/calc() can place an otherwise full-resolution canvas
+  // halfway between TV pixels. Measure the layout box without our correction.
+  canvas.style.transform = 'none';
+  const { width, height, left, top } = canvas.getBoundingClientRect();
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
   const pixelWidth = Math.max(1, Math.ceil(width * pixelRatio));
   const pixelHeight = Math.max(1, Math.ceil(height * pixelRatio));
   if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
   if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
+  // Preserve layout while mapping each bitmap pixel to exactly one display
+  // pixel. Corrections are less than one physical pixel and run only on resize;
+  // image-rendering remains smooth for the canvas's own vector antialiasing.
+  const offsetX = Number.isFinite(left) ? Math.round(left * pixelRatio) / pixelRatio - left : 0;
+  const offsetY = Number.isFinite(top) ? Math.round(top * pixelRatio) / pixelRatio - top : 0;
+  canvas.style.transformOrigin = '0 0';
+  canvas.style.transform = `matrix(${pixelWidth / (width * pixelRatio)}, 0, 0, ${pixelHeight / (height * pixelRatio)}, ${offsetX}, ${offsetY})`;
   canvasPixelRatio = pixelRatio;
   canvasResolutionDirty = false;
 }
@@ -85,7 +97,10 @@ window.addEventListener('load', markCanvasResolutionDirty);
 ['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange']
   .forEach(event => document.addEventListener(event, markCanvasResolutionDirty));
 if (window.ResizeObserver) {
-  new window.ResizeObserver(markCanvasResolutionDirty).observe(canvas);
+  const canvasResizeObserver = new window.ResizeObserver(markCanvasResolutionDirty);
+  canvasResizeObserver.observe(canvas);
+  // A HUD/progression-bar change can recenter the board without resizing it.
+  if (canvas.parentElement) canvasResizeObserver.observe(canvas.parentElement);
 }
 const dayScoreEl = document.getElementById("day-score");
 const nightScoreEl = document.getElementById("night-score");
@@ -184,13 +199,24 @@ function saveSettings() {
 }
 
 // ==================== AUDIO SYSTEM ====================
+function nativeAudioReady() {
+  try { return !!(window.AndroidHost && AndroidHost.isNativeAudioReady && AndroidHost.isNativeAudioReady()); }
+  catch (_) { return false; }
+}
+function playNativeSound(cue, volume) {
+  try { return !!(window.AndroidHost && AndroidHost.playSound && AndroidHost.playSound(cue, volume)); }
+  catch (_) { return false; }
+}
+function stopNativeSounds() {
+  try { if (window.AndroidHost && AndroidHost.stopSounds) AndroidHost.stopSounds(); } catch (_) { }
+}
 const audio = {
   ctx: null,
   masterGain: null,
-  init() {
-    if (this.ctx || !settings.soundEnabled || settings.soundVolume <= 0) return;
+  init(webFallback = false) {
+    if (this.ctx || (!webFallback && nativeAudioReady()) || !settings.soundEnabled || settings.soundVolume <= 0) return;
     try {
-      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      this.ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
       this.masterGain = this.ctx.createGain();
       this.masterGain.connect(this.ctx.destination);
       this.applySettings();
@@ -208,8 +234,11 @@ const audio = {
     settings.soundVolume = v;
     this.applySettings();
   },
-  _play(fn) {
-    if (!settings.soundEnabled || !feedbackActive || document.hidden || !this.ctx) return;
+  _play(fn, cue) {
+    if (!settings.soundEnabled || settings.soundVolume <= 0 || !feedbackActive || document.hidden) return;
+    if (playNativeSound(cue, settings.soundVolume / 100)) return;
+    this.init(true);
+    if (!this.ctx) return;
     this.resume();
     try { fn(this.ctx, this.masterGain); } catch (e) { }
   },
@@ -225,7 +254,7 @@ const audio = {
       g.gain.setValueAtTime(0.1, ac.currentTime);
       g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.07);
       o.start(); o.stop(ac.currentTime + 0.07);
-    });
+    }, team === 'day' ? 'bounceDay' : 'bounceNight');
   },
   playRacketHit() {
     this._play((ac, dest) => {
@@ -235,7 +264,7 @@ const audio = {
       g.gain.setValueAtTime(0.18, ac.currentTime);
       g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.1);
       o.start(); o.stop(ac.currentTime + 0.1);
-    });
+    }, 'racket');
   },
   playPowerup() {
     this._play((ac, dest) => {
@@ -248,7 +277,7 @@ const audio = {
         g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
         o.start(t); o.stop(t + 0.12);
       });
-    });
+    }, 'powerup');
   },
   playWin() {
     this._play((ac, dest) => {
@@ -262,11 +291,12 @@ const audio = {
         g.gain.exponentialRampToValueAtTime(0.001, t + 1.0);
         o.start(t); o.stop(t + 1.0);
       });
-    });
+    }, 'win');
   },
 };
 
-// UI cues share the game's effects context. Music remains independently optional.
+// UI cues use native effects on Android or the shared effects context on web.
+// Music remains independently optional.
 let uiFeedback = null;
 let feedbackActive = true;
 let feedbackSequence = 0;
@@ -276,6 +306,7 @@ let hapticAt = -Infinity;
 let keyboardFocusAt = -Infinity;
 function syncFeedbackSettings() {
   audio.applySettings();
+  if (!settings.soundEnabled || settings.soundVolume <= 0) stopNativeSounds();
   if (uiFeedback) {
     uiFeedback.setEnabled(settings.soundEnabled);
     uiFeedback.setVolume(settings.soundVolume / 100);
@@ -285,7 +316,8 @@ function syncFeedbackSettings() {
 function getFeedback() {
   if (!uiFeedback && window.PongFeedback) {
     uiFeedback = new window.PongFeedback({
-      audioContextFactory: () => { audio.init(); return audio.ctx; },
+      audioContextFactory: () => { audio.init(true); return audio.ctx; },
+      nativePlay: playNativeSound, nativeReady: nativeAudioReady,
       enabled: settings.soundEnabled, volume: settings.soundVolume / 100,
     });
     if (!feedbackActive) uiFeedback.suspend();
@@ -323,7 +355,7 @@ function setFeedbackActive(active) {
   feedbackActive = active === true && !document.hidden;
   audio.applySettings();
   if (uiFeedback) { if (feedbackActive) uiFeedback.resume(); else uiFeedback.suspend(); }
-  if (!feedbackActive) { cancelHaptics(); feedbackTouch = false; }
+  if (!feedbackActive) { stopNativeSounds(); cancelHaptics(); feedbackTouch = false; }
 }
 
 // ==================== GAME STATE ====================
@@ -339,7 +371,13 @@ let powerups = [];
 let activeEffects = { day: {}, night: {} };
 let particles = [], ballTrails = [];
 let _trailPool = []; // recycled trail objects to avoid GC
-let screenShake = { intensity: 0 };
+let screenShake = { intensity: 0, previousIntensity: 0, phase: 0, previousPhase: 0 };
+
+function triggerScreenShake(intensity) {
+  if (!settings.effectsEnabled || !settings.screenShake) return;
+  if (screenShake.intensity === 0) screenShake.phase = screenShake.previousPhase = 0;
+  screenShake.intensity = Math.max(screenShake.intensity, intensity);
+}
 let dayScore = 0, nightScore = 0;
 let lastSpawn = { day: 0, night: 0 };
 function makeAiState(x, y) {
@@ -1253,7 +1291,7 @@ function checkSquareCollision(ball) {
   }
   if (painted) {
     audio.playBounce(ball.team);
-    if (settings.effectsEnabled && settings.screenShake) screenShake.intensity = Math.max(screenShake.intensity, 1);
+    triggerScreenShake(1);
   }
 }
 
@@ -1315,7 +1353,7 @@ function checkRacketCollision(ball, player) {
     ball.skipSquareCheck = 2; // brief skip to avoid immediate re-bounce into squares behind racket
     audio.playRacketHit();
     if (settings.effectsEnabled) {
-      if (settings.screenShake) screenShake.intensity = Math.max(screenShake.intensity, 3.5);
+      triggerScreenShake(3.5);
       if (settings.particles) for (let p = 0; p < 5; p++) particles.push(makeParticle(ball.x, ball.y, ball.ballColor));
     }
   }
@@ -1512,7 +1550,7 @@ function collectPowerup(pu, collector) {
     const px = pu.gridX * SQUARE_SIZE + SQUARE_SIZE / 2;
     const py = pu.gridY * SQUARE_SIZE + SQUARE_SIZE / 2;
     for (let p = 0; p < 10; p++) particles.push(makeParticle(px, py, ACCENT));
-    if (settings.screenShake) screenShake.intensity = Math.max(screenShake.intensity, 4);
+    triggerScreenShake(4);
   }
 }
 
@@ -1694,7 +1732,12 @@ function updateParticles() {
       ballTrails[i] = ballTrails[ballTrails.length - 1]; ballTrails.pop();
     }
   }
+  screenShake.previousIntensity = screenShake.intensity;
+  screenShake.previousPhase = screenShake.phase;
   if (screenShake.intensity > 0) {
+    // A short damped kick at 9 Hz, advanced by physics rather than display
+    // frames. Fresh random offsets per render made 60/120 Hz TVs shimmer.
+    screenShake.phase += 2 * Math.PI * 9 / TICK_RATE;
     screenShake.intensity *= 0.88;
     if (screenShake.intensity < 0.3) screenShake.intensity = 0;
   }
@@ -1799,31 +1842,51 @@ function drawPowerupIcon(cx, cy, type, size) {
 // Squares: fill day as background, then batch-path all night cells into a single fill.
 // Two fillStyle assignments per frame + one batched path — stays on the GPU path,
 // unlike putImageData which can force canvas into software mode on mobile GPUs.
-function renderSquares() {
-  const sq = SQUARE_SIZE;
+function renderSquares(shakeX = 0, shakeY = 0) {
+  // Draw cell boundaries in physical pixels, rather than dividing rounded
+  // coordinates back into world units: GPU float transforms can soften even
+  // mathematically integer edges at non-integer resolution scales.
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = DAY_COLOR;
-  ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = NIGHT_COLOR;
   ctx.beginPath();
   for (let i = 0; i < NUM_SQUARES; i++) {
     const col = squares[i];
-    const x = i * sq;
+    // Neighboring territory cells share integer physical pixel boundaries,
+    // including when the world-to-screen scale is not an integer.
+    const left = i === 0 ? Math.min(0, -shakeX) : Math.round(i * canvas.width / NUM_SQUARES);
+    const right = i === NUM_SQUARES - 1 ? Math.max(canvas.width, canvas.width - shakeX) : Math.round((i + 1) * canvas.width / NUM_SQUARES);
     for (let j = 0; j < NUM_SQUARES; j++) {
-      if (col[j] === NIGHT_COLOR) ctx.rect(x, j * sq, sq, sq);
+      if (col[j] === NIGHT_COLOR) {
+        const top = j === 0 ? Math.min(0, -shakeY) : Math.round(j * canvas.height / NUM_SQUARES);
+        const bottom = j === NUM_SQUARES - 1 ? Math.max(canvas.height, canvas.height - shakeY) : Math.round((j + 1) * canvas.height / NUM_SQUARES);
+        ctx.rect(left + shakeX, top + shakeY, right - left, bottom - top);
+      }
     }
   }
   ctx.fill();
 }
 
+function screenShakeOffset(alpha) {
+  if (!settings.effectsEnabled || !settings.screenShake) return { x: 0, y: 0 };
+  const intensity = screenShake.previousIntensity + (screenShake.intensity - screenShake.previousIntensity) * alpha;
+  const phase = screenShake.previousPhase + (screenShake.phase - screenShake.previousPhase) * alpha;
+  // Move the whole scene together and only by whole backing pixels. This
+  // avoids re-antialiasing every edge at each frame of the shake.
+  return {
+    x: Math.round(Math.sin(phase) * intensity * 0.5 * canvas.width / CANVAS_SIZE) || 0,
+    y: Math.round(Math.sin(phase * 0.73) * intensity * 0.35 * canvas.height / CANVAS_SIZE) || 0,
+  };
+}
+
 function render(alpha = 1) {
   syncCanvasResolution();
-  ctx.setTransform(canvas.width / CANVAS_SIZE, 0, 0, canvas.height / CANVAS_SIZE, 0, 0);
-  renderSquares();
+  const shake = screenShakeOffset(alpha);
+  renderSquares(shake.x, shake.y);
+  ctx.setTransform(canvas.width / CANVAS_SIZE, 0, 0, canvas.height / CANVAS_SIZE, shake.x, shake.y);
 
   ctx.save();
-  if (settings.effectsEnabled && settings.screenShake && screenShake.intensity > 0) {
-    ctx.translate((Math.random() - 0.5) * screenShake.intensity, (Math.random() - 0.5) * screenShake.intensity);
-  }
 
   // Grid lines (single batched path)
   if (settings.effectsEnabled && settings.gridEffect) {
@@ -2661,7 +2724,8 @@ function startGame() {
   };
 
   powerups = []; activeEffects = { day: {}, night: {} };
-  particles = []; ballTrails = []; _trailPool = []; screenShake = { intensity: 0 };
+  particles = []; ballTrails = []; _trailPool = [];
+  screenShake = { intensity: 0, previousIntensity: 0, phase: 0, previousPhase: 0 };
   _prevDayScore = -1; _prevNightScore = -1; _prevDayPct = -1; _prevShowBar = null;
   teleportState = { p1: { holdFrames: 0, remaining: TELEPORT_MAX }, p2: { holdFrames: 0, remaining: TELEPORT_MAX } };
   dayScore = TOTAL_SQUARES / 2; nightScore = TOTAL_SQUARES / 2;
@@ -2712,6 +2776,19 @@ window.PongGame = Object.freeze({
   feedback: playFeedback,
   unlockAudio: unlockFeedback,
   setFeedbackActive,
+  getDiagnostics() {
+    const rect = canvas.getBoundingClientRect();
+    let display = {}, sound = { backend: 'Web Audio', ready: !!audio.ctx };
+    try {
+      if (window.AndroidHost && AndroidHost.getDisplayInfo) display = JSON.parse(AndroidHost.getDisplayInfo());
+      if (window.AndroidHost && AndroidHost.getAudioInfo) sound = JSON.parse(AndroidHost.getAudioInfo());
+    } catch (_) { /* A missing diagnostic must never block the settings screen. */ }
+    return {
+      display,
+      renderer: { width: canvas.width, height: canvas.height, cssWidth: rect.width, cssHeight: rect.height, dpr: window.devicePixelRatio || 1 },
+      audio: sound,
+    };
+  },
   getSettings() {
     return JSON.parse(JSON.stringify(settings));
   },

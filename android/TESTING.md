@@ -1,5 +1,33 @@
 # Android TV verification
 
+## Native effects, optional remote buttons and pixel rendering (1.0.4)
+
+The reported delay affects menus and gameplay through an HDMI/eARC soundbar or receiver. Short effects now use twelve preloaded native `SoundPool` samples with `USAGE_GAME`, without an event-time decoder or a WebView audio context. The website retains Web Audio; Android also keeps it as a fallback when a sample is unavailable. Both web contexts request interactive latency. Native mute, focus loss, page reload and backgrounding stop effects rather than replaying them later. This removes WebView buffering from the normal effects path; it does not measure or compensate for a physical HDMI/eARC delay.
+
+Remote setup requires only action and four directions. Each extra rotation/rescue step offers skip-one, skip-all or explicit teaching. Orange and the word **Current** identify the active step; completed steps are teal and the action-button assignment stays visible. Saved profiles and cancellation still work. Screen shake now follows a damped oscillation at simulation time, interpolated for rendering, and moves all board content together at integer physical-pixel offsets. Territory cells and the canvas origin/extent align to physical pixels without reducing resolution.
+
+Verified on 13 October 2026:
+
+- **133 JavaScript tests** pass, including native routing/fallback, mute/lifecycle, optional-button setup, held-input release gates, saved-profile cancellation, display diagnostics and renderer regressions.
+- Real Chrome at **3840 × 2160** confirms that the final canvas compositor correction reduces blended territory-edge pixels from 30 per sampled checkerboard row to zero. The native backing store also has zero blended edge pixels. This checks territory boundaries; vector ball/racket edges retain their own antialiasing.
+- Desktop viewports at 1920 × 1080 (DPR 2), 1280 × 720 (DPR 3) and 640 × 360 (DPR 2), plus portrait/landscape mobile at DPR 3, pass board fit, backing resolution, movement, pause/resume and resize/orientation checks. Controller setup fits the compact TV viewport without footer overlap.
+- Android debug/release builds, lint, and all native unit-test variants pass. The ten distinct native tests include sample headers, durations, unclipped/nonzero PCM at 44.1/48/192 kHz, input policy and display policy.
+- On the dedicated 720p Google TV API 36 AVD, native remote keys pass skip-one/skip-all, held-confirm release gates, saving to the lobby, action-button rotation in both directions and hold-to-rescue. Two native virtual gamepads pass a mixed setup: P1 teaches separate shoulder/rescue buttons and P2 skips extras. Held Start/Resume, cancelled remapping, replacement/disconnection and saved profiles after restart pass; reconnection cannot resume with a player missing.
+- Emulator harnesses wait for music, native focus and the WebView debugging connection within bounded deadlines rather than assuming immediate readiness after foregrounding or process restart.
+- The dedicated 4K Google TV API 36 AVD reports **3840 × 2160 output and app surface at 60 Hz**, a 960 × 540 CSS viewport at DPR 4, and a **1957 × 1957** canvas mapped exactly to whole physical pixels. An actual 3840 × 2160 Android framebuffer capture has zero blended territory-edge pixels. The canvas is opaque and uses WebView's supported `pixelated` fallback; shake offsets are integer, deterministic and settle to zero. No JavaScript exceptions occurred. Evidence: `native-render-v4.json`, `native-4k-v4-gameplay.png`, `native-4k-v4-pixels.png`.
+- The 720p AVD's native audio regression loads **12/12 cues at 48 kHz** and verifies navigation, confirmation, settings mute, zero volume, gameplay effects, start/pause/resume, three Home/return cycles and real held `uinput` navigation. Effects create no Web Audio context; muted/background cues do not replay. Ten accepted UI calls measured a median 1.6 ms / p95 3.9 ms synchronous bridge dispatch time. These numbers measure a software call, **not audible output latency**. See `feedback-native.json`.
+
+The 4K AVD uses SwiftShader software graphics and sampled approximately 150 ms median / 383 ms p95 frame intervals under concurrent emulation. Its advertised 60 Hz output is not proof of 60 fps rendering or physical TV smoothness. Hardware display processing and HDMI/eARC audio delay remain unmeasured.
+
+The 4K cold boot exposed a transient failed `resume` sample preload. The native loader now retries preparation at most twice (500 ms then 1 second), with named diagnostics, cleanup and cancellation on release. A fault-injection check temporarily removed write permission from the dedicated emulator's audio cache: all twelve first attempts failed, then all twelve recovered automatically after permission restoration, with zero queued/replayed sounds. A clean restart reports twelve loaded, zero failures/retries, and no effects Web Audio context. Home/return stops effects and does not replay them. AudioFlinger confirms a separate static PCM16 mono 48 kHz `USAGE_GAME` track; this software AVD reports no fast mixer. Evidence: `native-audio-retry.json`, `audio-4k-final.json`, `native-audio-flinger.txt`. Run `node android/tests/emulator-native-audio-retry.cjs` only on the dedicated debug emulator; its guarded driver refuses physical devices and the script restores cache permissions in `finally`.
+
+The exact signed **1.0.4/code 12** APK passes a native-key-only smoke: home, optional buttons, control review, saved lobby, gameplay, pause, settings, music Off and Home/foreground return. All nine screenshots under `release/` were inspected; pixel inspection confirms the lobby heading starts at y = 32 with its safe margin intact. Installed metadata confirms code 12 and no debuggable flag. AndroidRuntime/chromium and native audio error logs are empty. APK and AAB signature checks pass, and both contain byte-identical tested game/audio/TV assets (`v4-release-assets.json`). SHA-256 hashes:
+
+- `pong-wars-reloaded-v1.0.4-12-tv.apk`: `8C5F1E35576140A54BBF59C061CC9DB43BEBB06DBAE9F918FCD8226C5AE55ED0`
+- `pong-wars-reloaded-v1.0.4-12-play.aab`: `E2051E83701609291C3E533845FDB94918A7171A379AF4F33002FE3D22342750`
+
+All evidence is under ignored `android/app/build/qa/`; browser scripts include `check-shake-v4.cjs` and the setup capture `optional-choices-640.png`.
+
 ## Menu feedback and match transitions (1.0.3)
 
 The shared effects context now plays short navigation, confirmation, back, pause/resume, controller-check and start cues. Menu music fades out over 450 ms as the start cue plays, without delaying gameplay. Explicit mute uses a much faster 30 ms fade. Touch vibration is optional, independently remembered, and limited to supported web touch devices.

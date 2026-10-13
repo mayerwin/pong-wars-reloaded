@@ -9,7 +9,7 @@ const root = path.join(__dirname, '../..');
 const source = fs.readFileSync(path.join(root, 'game.js'), 'utf8');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 
-function loadWebsite({ storage = new Map(), native = false, touch = false, vibration = true, feedbackUnlockDelayMs = 0 } = {}) {
+function loadWebsite({ storage = new Map(), native = false, nativeBridge = null, touch = false, vibration = true, feedbackUnlockDelayMs = 0 } = {}) {
   let now = 0, timeoutId = 0;
   const timeouts = new Map(), elements = new Map(), musicInstances = [], feedbackInstances = [], vibrations = [], cues = [], feedbackCalls = [];
   let document, window;
@@ -140,7 +140,7 @@ function loadWebsite({ storage = new Map(), native = false, touch = false, vibra
     suspend() { this.background = true; } resume() { this.background = false; } dispose() { this.background = true; }
   }
   window = { ...eventTarget(), matchMedia: () => ({ matches: !touch }), PongMenuMusic: Music, PongFeedback: Feedback };
-  if (native) window.AndroidHost = {};
+  if (native || nativeBridge) window.AndroidHost = nativeBridge || {};
   document = { ...eventTarget(), children: [], hidden: false, activeElement: null,
     getElementById: id => elements.get(id) || null, createElement: makeElement,
     querySelectorAll: selector => descendants(document).filter(node => matches(node, selector)),
@@ -152,7 +152,7 @@ function loadWebsite({ storage = new Map(), native = false, touch = false, vibra
   document.body = descendants(document).find(el => el.tagName === 'BODY'); document.activeElement = document.body;
   const navigator = { maxTouchPoints: touch ? 1 : 0 };
   if (vibration) navigator.vibrate = pattern => { vibrations.push(Array.isArray(pattern) ? Array.from(pattern) : pattern); return true; };
-  const context = vm.createContext({ window, document, navigator, screen: {}, ResizeObserver: class { observe() {} disconnect() {} },
+  const context = vm.createContext({ window, document, navigator, AndroidHost: window.AndroidHost, screen: {}, ResizeObserver: class { observe() {} disconnect() {} },
     localStorage: { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value) },
     getComputedStyle: () => ({ getPropertyValue: () => '', transform: 'none' }), performance: { now: () => now },
     requestAnimationFrame() {}, setTimeout(fn, delay = 0) { const id = ++timeoutId; timeouts.set(id, { fn, at: now + delay }); return id; },

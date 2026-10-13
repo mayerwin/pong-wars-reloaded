@@ -120,11 +120,10 @@ function calibrateRemote(host, device, confirm = 'DPAD_CENTER', codes = ['DPAD_U
   for (const code of codes) host.hold(device, code);
   assert.equal(host.title, 'Rotate left');
   host.tap(device, confirm);
-  host.hold(device, codes[2]);
   assert.equal(host.title, 'Rotate right');
-  host.hold(device, codes[3]);
+  host.tap(device, confirm);
   assert.equal(host.title, 'Rescue your ball');
-  host.hold(device, confirm, 3000);
+  host.tap(device, confirm);
   assert.match(host.title, /You’re ready/);
   host.tap(device, confirm);
   assert.match(host.title, /Your controls|Pick up/);
@@ -132,7 +131,7 @@ function calibrateRemote(host, device, confirm = 'DPAD_CENTER', codes = ['DPAD_U
 
 function savedProfile(device) { const p = input.profile(device); p.verified = true; return p; }
 
-test('remote joins, checks all actions, saves, then skips setup on the next match', () => {
+test('remote joins, skips optional buttons, saves, then skips setup on the next match', () => {
   const host = loadHost();
   host.click('solo');
   calibrateRemote(host, remote);
@@ -216,7 +215,7 @@ test('known mouse uses native pointer focus, clicks to join and right-clicks to 
   assert.equal(host.game.state.state, 'paused');
 });
 
-test('a new mouse completes directions, wheel rotations and a held-click rescue', () => {
+test('a new mouse teaches directions and wheel rotations and uses the held-click rescue shortcut', () => {
   const host = loadHost();
   host.click('solo');
   chooseController(host, mouse, 'MOUSE_PRIMARY');
@@ -228,8 +227,10 @@ test('a new mouse completes directions, wheel rotations and a held-click rescue'
     host.advance(100);
   }
   assert.equal(host.title, 'Rotate left');
+  host.click('teach-optional'); host.advance(60);
   host.send(mouse, {type:'motion', pointer:{scrollY:1}}); host.advance(220);
   assert.equal(host.title, 'Rotate right');
+  host.click('teach-optional'); host.advance(60);
   host.send(mouse, {type:'motion', pointer:{scrollY:-1}}); host.advance(220);
   assert.equal(host.title, 'Rescue your ball');
   host.hold(mouse, 'MOUSE_PRIMARY', 3000);
@@ -348,13 +349,14 @@ test('a held finish button cannot click through review, lobby or into gameplay',
   const host = loadHost();
   host.click('solo'); chooseController(host, remote);
   for (const code of ['DPAD_UP','DPAD_DOWN','DPAD_LEFT','DPAD_RIGHT']) host.hold(remote, code);
-  host.tap(remote, 'DPAD_CENTER'); host.hold(remote, 'DPAD_LEFT'); host.hold(remote, 'DPAD_RIGHT');
-  host.key(remote, 'DPAD_CENTER'); host.advance(3500);
+  host.tap(remote, 'DPAD_CENTER'); host.tap(remote, 'DPAD_CENTER');
+  host.click('teach-optional'); host.advance(60);
+  host.key(remote, 'BUTTON_X'); host.advance(3500);
   assert.match(host.title, /You’re ready/);
   // Some Bluetooth senders repeat down events without Android's repeat flag.
-  for (let i = 0; i < 4; i++) { host.key(remote, 'DPAD_CENTER'); host.advance(40); }
+  for (let i = 0; i < 4; i++) { host.key(remote, 'BUTTON_X'); host.advance(40); }
   assert.match(host.title, /You’re ready/);
-  host.key(remote, 'DPAD_CENTER', 'up'); host.tap(remote, 'DPAD_CENTER');
+  host.key(remote, 'BUTTON_X', 'up'); host.tap(remote, 'DPAD_CENTER');
   assert.equal(host.title, 'Your controls. Your match.');
   assert.equal(host.game.starts, 0);
   host.key(remote, 'DPAD_CENTER');
@@ -537,12 +539,12 @@ test('Start, pause and Resume each produce one cue; automatic lifecycle transiti
   assert.equal(host.game.cues.length, before, 'focus-loss pause must be silent');
 });
 
-test('setup cues confirm accepted steps once and reserve success for completing all checks', () => {
+test('setup cues confirm accepted steps once and reserve success for completing required and optional choices', () => {
   const host = loadHost(); host.click('solo');
   chooseController(host, remote);
   host.game.cues.length = 0;
   for (const code of ['DPAD_UP','DPAD_DOWN','DPAD_LEFT','DPAD_RIGHT']) host.hold(remote, code);
-  host.tap(remote, 'DPAD_CENTER'); host.hold(remote, 'DPAD_LEFT'); host.hold(remote, 'DPAD_RIGHT');
+  host.tap(remote, 'DPAD_CENTER'); host.tap(remote, 'DPAD_CENTER');
   assert.deepEqual(host.game.cues, Array(6).fill('confirm'));
   host.key(remote, 'DPAD_CENTER'); host.advance(3500);
   assert.deepEqual(host.game.cues, [...Array(6).fill('confirm'),'success']);
@@ -570,4 +572,146 @@ test('known joins and explicit reconnects confirm once while device notification
   assert.deepEqual(host.game.cues, ['success']);
   host.click('resume');
   assert.deepEqual(host.game.cues, ['success','resume']);
+});
+
+test('setup marks the chosen action button, active step and optional extras explicitly', () => {
+  const host = loadHost(); host.click('solo'); chooseController(host, remote);
+  assert.match(host.html, /Action button set: <strong>OK<\/strong>/);
+  assert.match(host.html, /class="current" aria-current="step"><b>1<\/b><small>Current/);
+  assert.match(host.html, /<b>5<\/b><small>Optional/);
+  assert.doesNotMatch(host.html, /data-do="skip-optional"/);
+  for (const code of ['DPAD_UP','DPAD_DOWN','DPAD_LEFT','DPAD_RIGHT']) host.hold(remote, code);
+  assert.match(host.html, /class="current" aria-current="step"><b>5<\/b><small>Current/);
+  assert.equal((host.html.match(/class="done"/g) || []).length, 4);
+  assert.match(host.html, /A separate button is optional/);
+  assert.match(host.html, /data-do="skip-all-optional"/);
+});
+
+test('five-button remote skips all extras by navigation and keeps every fallback after saving', () => {
+  const host = loadHost(); host.click('solo'); chooseController(host, remote);
+  for (const code of ['DPAD_UP','DPAD_DOWN','DPAD_LEFT','DPAD_RIGHT']) host.hold(remote, code);
+  host.tap(remote, 'DPAD_DOWN');
+  assert.equal(host.document.activeElement.dataset.do, 'skip-all-optional');
+  host.key(remote, 'DPAD_CENTER'); host.advance(3500);
+  assert.match(host.title, /You’re ready/);
+  host.key(remote, 'DPAD_CENTER'); host.key(remote, 'DPAD_CENTER', 'down', 1);
+  assert.match(host.title, /You’re ready/, 'held Skip must not also Save');
+  host.key(remote, 'DPAD_CENTER', 'up'); host.tap(remote, 'DPAD_CENTER');
+  assert.equal(host.title, 'Your controls. Your match.');
+  const saved = JSON.parse(host.stored.get('pongTVDevices.v1'))[remote.key];
+  assert.equal(saved.learned.rotateLeft, undefined);
+  assert.equal(saved.learned.rotateRight, undefined);
+  assert.equal(saved.learned.teleport, undefined);
+  assert.equal(saved.learned.down, 'DPAD_DOWN', 'menu navigation must not steal a movement mapping');
+  assert.match(host.html, /Tap OK, then D-pad ←/);
+  assert.match(host.html, /Hold OK \(2½ s\)/);
+  host.tap(remote, 'DPAD_CENTER'); host.tap(remote, 'DPAD_CENTER');
+  host.key(remote, 'DPAD_LEFT'); host.advance(20);
+  assert.equal(host.game.inputs[0].rotateLeft, true);
+  assert.equal(host.game.inputs[0].x, 0);
+  host.key(remote, 'DPAD_LEFT', 'up'); host.advance(60);
+  host.key(remote, 'DPAD_RIGHT'); host.advance(20);
+  assert.equal(host.game.inputs[0].rotateRight, true);
+  host.key(remote, 'DPAD_RIGHT', 'up'); host.advance(60);
+  host.key(remote, 'DPAD_CENTER'); host.advance(600);
+  assert.equal(host.game.inputs[0].teleport, true);
+  assert.equal(host.game.inputs[0].rotateRight, false);
+});
+
+test('optional teaching retains separate trigger/buttons and mixes them with skipped extras', () => {
+  const host = loadHost(); host.click('solo'); chooseController(host, remote, 'BUTTON_A');
+  for (const code of ['DPAD_UP','DPAD_DOWN','DPAD_LEFT','DPAD_RIGHT']) host.hold(remote, code);
+  host.tap(remote, 'DPAD_DOWN'); host.tap(remote, 'DPAD_DOWN');
+  assert.equal(host.document.activeElement.dataset.do, 'teach-optional');
+  host.tap(remote, 'BUTTON_A');
+  host.send(remote, {type:'motion', axes:{ltrigger:1}}); host.advance(20);
+  host.send(remote, {type:'motion', axes:{ltrigger:0}}); host.advance(60);
+  assert.equal(host.title, 'Rotate right');
+  host.tap(remote, 'BUTTON_A');
+  assert.equal(host.title, 'Rescue your ball');
+  host.click('teach-optional'); host.advance(60);
+  host.hold(remote, 'BUTTON_X', 2200);
+  assert.match(host.title, /You’re ready/);
+  host.tap(remote, 'BUTTON_A');
+  const saved = JSON.parse(host.stored.get('pongTVDevices.v1'))[remote.key];
+  assert.equal(saved.learned.rotateLeft, 'axis:ltrigger:1');
+  assert.equal(saved.learned.rotateRight, undefined);
+  assert.equal(saved.learned.teleport, 'BUTTON_X');
+  assert.match(host.html, /LT \/ L2/);
+  assert.match(host.html, /Tap A \/ Cross, then D-pad →/);
+});
+
+test('optional menu consumes held input from the previous step and ignores another player', () => {
+  const host = loadHost(); host.click('duo'); chooseController(host, remote);
+  for (const code of ['DPAD_UP','DPAD_DOWN','DPAD_LEFT']) host.hold(remote, code);
+  host.key(remote, 'DPAD_RIGHT'); host.advance(600);
+  assert.equal(host.title, 'Rotate left');
+  host.key(remote, 'DPAD_RIGHT'); host.key(remote, 'DPAD_DOWN', 'down', 1);
+  assert.equal(host.document.activeElement.dataset.do, 'skip-optional');
+  host.tap(keyboard, 'ENTER'); host.tap(keyboard, 'DPAD_DOWN');
+  assert.equal(host.title, 'Rotate left');
+  assert.equal(host.document.activeElement.dataset.do, 'skip-optional');
+  host.key(remote, 'DPAD_DOWN', 'up'); host.key(remote, 'DPAD_RIGHT', 'up'); host.advance(60);
+  host.tap(remote, 'DPAD_CENTER');
+  assert.equal(host.title, 'Rotate right');
+  assert.match(host.html, /<small>Shortcut<\/small>/);
+});
+
+test('returning from unfinished optional teaching discards its partial mapping before Skip', () => {
+  const host = loadHost(); host.click('solo'); chooseController(host, keyboard, 'F9');
+  for (const code of ['F1','F2','F3','F4']) host.hold(keyboard, code);
+  host.tap(keyboard, 'F9'); host.tap(keyboard, 'F9');
+  host.click('teach-optional'); host.advance(60);
+  host.hold(keyboard, 'F7', 100);
+  assert.equal(host.title, 'Rescue your ball');
+  host.tap(keyboard, 'F9');
+  assert.match(host.html, /data-do="skip-optional"/);
+  host.tap(keyboard, 'F9'); host.tap(keyboard, 'F9');
+  const saved = JSON.parse(host.stored.get('pongTVDevices.v1'))[keyboard.key];
+  assert.equal(saved.learned.teleport, undefined);
+  assert.equal(saved.bindings.teleport.includes('F7'), false);
+  assert.equal(host.game.starts, 0);
+
+  // Teaching a default rotation key for an unfinished rescue temporarily
+  // removes its old alias. Going back must restore that alias too.
+  host.click('rebind-0'); host.advance(60); host.tap(keyboard, 'F9');
+  for (const code of ['F1','F2','F3','F4']) host.hold(keyboard, code);
+  host.tap(keyboard, 'F9'); host.tap(keyboard, 'F9');
+  host.click('teach-optional'); host.advance(60); host.hold(keyboard, 'BUTTON_R1', 100);
+  host.tap(keyboard, 'F9'); host.tap(keyboard, 'F9'); host.tap(keyboard, 'F9');
+  const restored = JSON.parse(host.stored.get('pongTVDevices.v1'))[keyboard.key];
+  assert.equal(restored.bindings.rotateRight.includes('BUTTON_R1'), true);
+  assert.equal(restored.bindings.teleport.includes('BUTTON_R1'), false);
+});
+
+test('Back from optional choices restores saved controls and the paused match', () => {
+  const saved = savedProfile(remote); saved.learned = {confirm:'DPAD_CENTER', rotateLeft:'BUTTON_L2'};
+  const host = loadHost({[remote.key]:saved});
+  host.click('solo'); host.tap(remote, 'DPAD_CENTER'); host.click('start-match');
+  host.tap(remote, 'BACK'); host.click('controls'); host.click('rebind-0');
+  host.advance(60); host.tap(remote, 'DPAD_CENTER');
+  for (const code of ['DPAD_UP','DPAD_DOWN','DPAD_LEFT','DPAD_RIGHT']) host.hold(remote, code);
+  const systemBack = {id:-1, key:'system-back', name:'Virtual remote'};
+  host.tap(systemBack, 'BACK');
+  assert.equal(host.title, 'Match paused.');
+  host.click('controls');
+  assert.match(host.html, /LT \/ L2/);
+  host.click('back-pause'); host.click('resume');
+  assert.equal(host.game.state.state, 'playing');
+  assert.equal(host.game.starts, 1);
+});
+
+test('TV diagnostics distinguishes output and app surface, and returns to paused visual settings', () => {
+  const host = loadHost();
+  host.game.getDiagnostics = () => ({display:{outputWidth:3840,outputHeight:2160,windowWidth:1920,windowHeight:1080,refreshRate:59.94},renderer:{width:980,height:980,dpr:2},audio:{backend:'Android native',ready:true}});
+  host.click('watch'); host.tap(remote, 'BACK'); host.click('options'); host.click('options-visuals'); host.click('diagnostics');
+  assert.equal(host.title, 'TV diagnostics');
+  assert.match(host.html, /TV output<\/dt><dd>3840 × 2160/);
+  assert.match(host.html, /App surface<\/dt><dd>1920 × 1080/);
+  assert.match(host.html, /Android native/);
+  assert.equal(host.game.state.state, 'paused');
+  host.tap(remote, 'BACK');
+  assert.equal(host.title, 'Visual details');
+  host.click('options-back'); host.click('resume');
+  assert.equal(host.game.state.state, 'playing');
 });

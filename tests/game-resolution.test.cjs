@@ -33,7 +33,8 @@ function loadRenderer(width = 800, height = width, dpr = 1, observeResize = true
     fillRect(...args) { draws.push({op:'fillRect',args,matrix:[...matrix]}); },
     strokeRect(...args) { draws.push({op:'strokeRect',args,matrix:[...matrix]}); },
     arc(...args) { draws.push({op:'arc',args,matrix:[...matrix]}); },
-    beginPath() {}, closePath() {}, rect() {}, fill() {}, stroke() {}, moveTo() {}, lineTo() {},
+    rect(...args) { draws.push({op:'rect',args,matrix:[...matrix]}); },
+    beginPath() {}, closePath() {}, fill() {}, stroke() {}, moveTo() {}, lineTo() {},
   };
   function element(id) {
     if (elements.has(id)) return elements.get(id);
@@ -80,6 +81,7 @@ function loadRenderer(width = 800, height = width, dpr = 1, observeResize = true
   return {window,document,canvas,draws,run,api:window.PongGame,
     get reads() { return reads; }, get writes() { return writes; },
     render() { draws.length=0; run('render(1)'); assert.equal(stack.length,0); },
+    position(left,top) { rect={...rect,left,top};window.emit('resize'); },
     resize(w,h=w,event='observer') {
       rect = {width:w,height:h};
       if (event === 'observer') {
@@ -97,14 +99,14 @@ test('backing pixels follow CSS size times DPR through 4K density without a fixe
     const game=loadRenderer(css,css,dpr); game.render();
     assert.equal(game.canvas.width,Math.ceil(css*dpr));
     assert.equal(game.canvas.height,Math.ceil(css*dpr));
-    assert.deepEqual(game.draws[0].args,[0,0,800,800]);
-    assert.deepEqual(game.draws[0].matrix,[Math.ceil(css*dpr)/800,0,0,Math.ceil(css*dpr)/800,0,0]);
+    assert.deepEqual(game.draws[0].args,[0,0,Math.ceil(css*dpr),Math.ceil(css*dpr)]);
+    assert.deepEqual(game.draws[0].matrix,[1,0,0,1,0,0]);
     assert.equal(game.run('CANVAS_SIZE'),800);
     assert.equal(game.run('NUM_SQUARES'),32);
   }
 });
 
-test('the entire frame is transformed exactly once, including territory, players and effects', () => {
+test('territory uses physical pixels and vector players/effects receive exactly one world transform', () => {
   const game=loadRenderer(900,900,2); // 1800 physical pixels, 2.25 pixels per world unit.
   game.run(`settings.effectsEnabled=true; settings.gridEffect=true; settings.particles=true;
     screenShake.intensity=0; player1.angle=player1.oldAngle=Math.PI/4;
@@ -114,13 +116,13 @@ test('the entire frame is transformed exactly once, including territory, players
   game.render();
   assert.ok(game.draws.some(d=>d.op==='strokeRect'), 'racket outlines rendered');
   assert.ok(game.draws.filter(d=>d.op==='arc').length>=5, 'balls, powerups and trails rendered');
-  for (const draw of game.draws) {
+  for (const draw of game.draws.slice(1).filter(d=>d.op!=='rect')) {
     const [a,b,c,d]=draw.matrix;
     assert.ok(Math.abs(Math.hypot(a,b)-2.25)<1e-10, 'x basis keeps one resolution scale');
     assert.ok(Math.abs(Math.hypot(c,d)-2.25)<1e-10, 'y basis keeps one resolution scale');
   }
   game.render();
-  assert.deepEqual(game.draws[0].matrix,[2.25,0,0,2.25,0,0], 'scale never compounds across frames');
+  assert.deepEqual(game.draws.find(d=>d.op==='arc').matrix,[2.25,0,0,2.25,0,0], 'scale never compounds across frames');
 });
 
 test('unchanged frames allocate no backing buffers and perform no repeated layout measurement', () => {
@@ -175,4 +177,86 @@ test('render resolution does not change player movement, balls, territory or gam
   assert.equal(large.snapshot(),small.snapshot());
   assert.equal(large.canvas.width,3840);
   assert.equal(small.canvas.width,400);
+});
+
+test('territory edges land on physical pixels at fractional display scales', () => {
+  const game=loadRenderer(653.078125,653.078125,3);
+  game.run(`for(let x=0;x<NUM_SQUARES;x++) for(let y=0;y<NUM_SQUARES;y++) squares[x][y]=((x+y)%2 ? NIGHT_COLOR : DAY_COLOR);`);
+  game.render();
+  const cells=game.draws.filter(d=>d.op==='rect');
+  assert.equal(cells.length,512);
+  for (const {args:[x,y,w,h],matrix:[sx,,,,tx,ty]} of cells) {
+    for (const edge of [x*sx+tx,(x+w)*sx+tx,y*sx+ty,(y+h)*sx+ty])
+      assert.ok(Math.abs(edge-Math.round(edge))<1e-8, `territory edge ${edge} must not create a soft seam`);
+  }
+});
+
+test('shake is smooth, deterministic and shared by territory, balls and rackets', () => {
+  const game=loadRenderer(960,960,2);
+  game.run(`settings.effectsEnabled=true; triggerScreenShake(4); updateParticles();`);
+  game.render();
+  const offset=JSON.parse(game.run('JSON.stringify(screenShakeOffset(1))'));
+  assert.ok(offset.x || offset.y, 'a newly triggered kick must move the scene');
+  assert.ok(Number.isInteger(offset.x) && Number.isInteger(offset.y));
+  const territory=game.draws.filter(d=>d.op==='rect')[1], ball=game.draws.find(d=>d.op==='arc');
+  assert.equal(territory.args[0],Math.round(game.canvas.width/2)+offset.x);
+  assert.equal(territory.args[1],Math.round(game.canvas.height/32)+offset.y);
+  assert.equal(ball.matrix[4],offset.x); assert.equal(ball.matrix[5],offset.y);
+  const before=JSON.stringify(game.draws);
+  game.run('Math.random = () => { throw new Error("render must never introduce random shake jitter"); };');
+  game.render(); assert.equal(JSON.stringify(game.draws),before);
+  const positions=[];
+  for(let i=0;i<=20;i++) positions.push(JSON.parse(game.run(`JSON.stringify(screenShakeOffset(${i/20}))`)));
+  for(let i=1;i<positions.length;i++) {
+    assert.ok(Math.abs(positions[i].x-positions[i-1].x)<=1);
+    assert.ok(Math.abs(positions[i].y-positions[i-1].y)<=1);
+  }
+});
+
+test('shake cadence does not depend on display refresh and settles completely', () => {
+  const slow=loadRenderer(960,960,4),fast=loadRenderer(960,960,4);
+  for(const game of [slow,fast]) game.run('settings.effectsEnabled=true; triggerScreenShake(4);');
+  for(let tick=0;tick<40;tick++) {
+    for(const game of [slow,fast]) game.run('updateParticles();');
+    slow.render();
+    fast.run('render(0); render(.5);'); fast.render();
+    assert.equal(slow.run('JSON.stringify(screenShakeOffset(1))'),fast.run('JSON.stringify(screenShakeOffset(1))'));
+  }
+  assert.deepEqual(JSON.parse(slow.run('JSON.stringify(screenShakeOffset(1))')),{x:0,y:0});
+});
+
+test('shake never uncovers transparent or wrong-color edges of a solid territory', () => {
+  const game=loadRenderer(653.078125,653.078125,3);
+  game.run(`settings.effectsEnabled=true; for(let x=0;x<NUM_SQUARES;x++) squares[x].fill(NIGHT_COLOR); triggerScreenShake(4);`);
+  for(let tick=0;tick<20;tick++) {
+    game.run('updateParticles();'); game.render();
+    const background=game.draws[0], cells=game.draws.filter(d=>d.op==='rect');
+    const [sx,,,sy,tx,ty]=background.matrix, [x,y,w,h]=background.args;
+    assert.ok(Math.abs(x*sx+tx)<1e-8 && Math.abs(y*sy+ty)<1e-8);
+    assert.ok(Math.abs(w*sx-game.canvas.width)<1e-8 && Math.abs(h*sy-game.canvas.height)<1e-8);
+    const first=cells[0],last=cells.at(-1);
+    assert.ok(first.args[0]*sx+tx<=1e-8 && first.args[1]*sy+ty<=1e-8);
+    assert.ok((last.args[0]+last.args[2])*sx+tx>=game.canvas.width-1e-8);
+    assert.ok((last.args[1]+last.args[3])*sy+ty>=game.canvas.height-1e-8);
+  }
+});
+
+test('turning effects or shake off immediately restores a stationary board', () => {
+  const game=loadRenderer(960,960,4);
+  game.run('settings.effectsEnabled=true; triggerScreenShake(4); updateParticles();');
+  for(const expression of ['settings.screenShake=false','settings.screenShake=true;settings.effectsEnabled=false']) {
+    game.run(expression);game.render();
+    assert.deepEqual(game.draws.find(d=>d.op==='arc').matrix,[4.8,0,0,4.8,0,0]);
+  }
+});
+
+test('fractional CSS canvas dimensions and centering align to exact physical pixel bounds', () => {
+  const game=loadRenderer(652.3125,652.3125,3);
+  game.position(313.84375,33.84375);game.render();
+  const matrix=game.canvas.style.transform.match(/matrix\((.*)\)/)[1].split(',').map(Number);
+  assert.ok(Math.abs(652.3125*3*matrix[0]-game.canvas.width)<1e-8);
+  assert.ok(Math.abs((313.84375+matrix[4])*3-942)<1e-8);
+  assert.ok(Math.abs((33.84375+matrix[5])*3-102)<1e-8);
+  assert.equal(game.canvas.style.transformOrigin,'0 0');
+  const first=game.canvas.style.transform;game.render();assert.equal(game.canvas.style.transform,first);
 });

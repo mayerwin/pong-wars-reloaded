@@ -75,6 +75,10 @@ body {
 /* ==================== CANVAS ==================== */
 #pongCanvas {
   display: block;
+  /* The engine draws antialiased vectors at full display density. Preserve
+     those pixels when CSS sizing/centering lands between physical pixels. */
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
   border-radius: 4px;
   overflow: hidden;
   width: 100%;
