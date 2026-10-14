@@ -30,7 +30,7 @@ test('Pierce Ball captures a continuous path at stacked size/speed without a ter
     balls = [makeBall(400, 100, 14, 5, 'day')];
     pickup('PIERCE_BALL'); pickup('BIGGER_BALL');
     for (let i = 0; i < POWERUP_LIMITS.FASTER_BALL; i++) pickup('FASTER_BALL');
-    for (let i = 0; i < 18; i++) { updateBalls(); game.tickCount++; }
+    for (let i = 0; i < 36; i++) { updateBalls(); game.tickCount++; }
   `);
   const ball = data(site, 'balls[0]');
   assert.ok(Math.abs(ball.x - 652) < 1e-9);
@@ -109,7 +109,7 @@ test('balls pass through one another if either team has Pierce Ball', () => {
     assert.deepEqual(data(site, 'balls.map(ball => ball.dx)'), piercingPlayer ? [7, -7] : [-7, 7]);
     if (piercingPlayer) {
       const positions = data(site, 'balls.map(ball => ball.x)');
-      const expected = piercingPlayer === 'player1' ? [300 + 7 / 3, 323] : [307, 330 - 7 / 3];
+      const expected = piercingPlayer === 'player1' ? [303.5, 323] : [307, 326.5];
       positions.forEach((x, i) => assert.ok(Math.abs(x - expected[i]) < 1e-9));
     }
   }
@@ -132,12 +132,12 @@ test('team-wide piercing covers current and later extra balls but leaves the opp
 
 test('a repeat pickup refreshes one timed effect; exact expiry restores territory and ball rebounds', () => {
   const site = game();
-  site.run(`settings.powerupDuration = 10; pickup('PIERCE_BALL'); game.tickCount = 9 * TICK_RATE; pickup('PIERCE_BALL'); updatePowerupHUD();`);
-  assert.deepEqual(data(site, 'activeEffects.day.PIERCE_BALL'), [19]);
+  site.run(`settings.powerupDuration = 120; pickup('PIERCE_BALL'); game.tickCount = 7 * TICK_RATE; pickup('PIERCE_BALL'); updatePowerupHUD();`);
+  assert.deepEqual(data(site, 'activeEffects.day.PIERCE_BALL'), [15]);
   const hasPierceBadge = () => site.element('day-powerups').querySelectorAll('.powerup-icon').some(el => el.getAttribute('title') === 'Pierce Ball');
   assert.equal(hasPierceBadge(), true);
   assert.equal(site.run("effectStacks('night', 'PIERCE_BALL', 9)"), 0);
-  site.run('game.tickCount = 19 * TICK_RATE - 1;');
+  site.run('game.tickCount = 15 * TICK_RATE - 1;');
   assert.equal(site.run("effectStacks('day', 'PIERCE_BALL', game.tickCount / TICK_RATE)"), 1);
   site.run(`
     game.tickCount++; fillTerritory(NIGHT_COLOR);
@@ -172,13 +172,12 @@ test('starting another match clears Pierce Ball', () => {
   assert.equal(site.run("effectStacks('day', 'PIERCE_BALL', 0)"), 0);
 });
 
-test('piercing moves every allied ball at one-third speed, including Fast Ball boosts', () => {
+test('piercing moves every allied ball at half unboosted speed regardless of Fast Ball stacks', () => {
   for (const stacks of [0, 1, 4]) {
     for (const team of ['day', 'night']) {
       const site = game();
       site.run(`
         const collector = ${team === 'day' ? 'player1' : 'player2'};
-        for (let i = 0; i < ${stacks}; i++) pickup('FASTER_BALL', collector);
         function measureMotion() {
           balls = [makeBall(200, 200, 9, 6, '${team}'), makeBall(400, 400, 9, 6, '${team}')];
           balls[1].isExtra = true; balls[1].expiresAt = 100;
@@ -189,11 +188,11 @@ test('piercing moves every allied ball at one-third speed, including Fast Ball b
         }
       `);
       const normal = data(site, 'measureMotion()');
-      site.run("pickup('PIERCE_BALL', collector);");
+      site.run(`for (let i = 0; i < ${stacks}; i++) pickup('FASTER_BALL', collector); pickup('PIERCE_BALL', collector);`);
       const slow = data(site, 'measureMotion()');
       for (let i = 0; i < 2; i++) {
-        assert.ok(Math.abs(slow[i].x * 3 - normal[i].x) < 1e-9);
-        assert.ok(Math.abs(slow[i].y * 3 - normal[i].y) < 1e-9);
+        assert.ok(Math.abs(slow[i].x * 2 - normal[i].x) < 1e-9);
+        assert.ok(Math.abs(slow[i].y * 2 - normal[i].y) < 1e-9);
         assert.equal(slow[i].dx, normal[i].dx, 'base velocity is preserved, not repeatedly divided');
         assert.equal(slow[i].dy, normal[i].dy);
       }
@@ -214,9 +213,9 @@ test('refresh never compounds slowdown; piercing and slowdown expire on the same
     }
   `);
   assert.ok(Math.abs(site.run('advanceSlowBall()') - 4.5) < 1e-9);
-  site.run("game.tickCount = 9 * TICK_RATE; pickup('PIERCE_BALL');");
-  assert.ok(Math.abs(site.run('advanceSlowBall()') - 4.5) < 1e-9, 'refresh retains one-third speed');
-  site.run('game.tickCount = 19 * TICK_RATE - 1;');
+  site.run("game.tickCount = 7 * TICK_RATE; pickup('PIERCE_BALL');");
+  assert.ok(Math.abs(site.run('advanceSlowBall()') - 4.5) < 1e-9, 'refresh retains half unboosted speed');
+  site.run('game.tickCount = 15 * TICK_RATE - 1;');
   assert.equal(site.run("effectStacks('day', 'PIERCE_BALL', game.tickCount / TICK_RATE)"), 1);
   assert.ok(Math.abs(site.run('advanceSlowBall()') - 4.5) < 1e-9);
   site.run('game.tickCount++;');
@@ -224,4 +223,34 @@ test('refresh never compounds slowdown; piercing and slowdown expire on the same
   assert.ok(Math.abs(site.run('advanceSlowBall()') - 13.5) < 1e-9, 'remaining Fast Ball boost returns immediately');
   site.run('fillTerritory(NIGHT_COLOR); checkSquareCollision(balls[0]);');
   assert.ok(site.run('balls[0].dx < 0 || balls[0].dy < 0'), 'territory rebound returns on that same tick');
+});
+
+test('Pierce Ball has its own fixed eight seconds while other effects keep the configured duration', () => {
+  for (const duration of [10, 40, 120]) {
+    const site = game();
+    site.run(`settings.powerupDuration = ${duration}; pickup('PIERCE_BALL'); pickup('FASTER_BALL'); pickup('EXTRA_BALL');`);
+    assert.deepEqual(data(site, 'activeEffects.day.PIERCE_BALL'), [8]);
+    assert.deepEqual(data(site, 'activeEffects.day.FASTER_BALL'), [duration]);
+    assert.equal(site.run('balls.find(b => b.isExtra).expiresAt'), duration);
+    site.run('game.tickCount = 8 * TICK_RATE - 1;');
+    assert.equal(site.run("effectStacks('day', 'PIERCE_BALL', game.tickCount / TICK_RATE)"), 1);
+    site.run('game.tickCount++;');
+    assert.equal(site.run("effectStacks('day', 'PIERCE_BALL', game.tickCount / TICK_RATE)"), 0);
+  }
+});
+
+test('Fast Ball can expire during piercing without changing half speed or returning later', () => {
+  const site = game();
+  site.run(`
+    settings.powerupDuration = 10; pickup('FASTER_BALL');
+    game.tickCount = 5 * TICK_RATE; pickup('PIERCE_BALL');
+    function measureStepAt(tick) {
+      game.tickCount = tick;
+      balls = [makeBall(200, 200, 9, 6, 'day')]; balls[0].skipSquareCheck = 100;
+      updateBalls(); return balls[0].x - 200;
+    }
+  `);
+  assert.ok(Math.abs(site.run('measureStepAt(9 * TICK_RATE)') - 4.5) < 1e-9);
+  assert.ok(Math.abs(site.run('measureStepAt(10 * TICK_RATE)') - 4.5) < 1e-9);
+  assert.ok(Math.abs(site.run('measureStepAt(13 * TICK_RATE)') - 9) < 1e-9);
 });

@@ -152,7 +152,9 @@
       '<div class="tv-row">' + button('options-visuals', 'Visual details') + button('options-rules', 'Match rules') + '</div>' + button('privacy', 'Privacy & credits');
     screen('<p class="tv-kicker">Make it yours</p><h2>' + (section === 'rules' ? 'Match rules' : section === 'visuals' ? 'Visual details' : 'Sound & display') + '</h2>' +
       (section === 'rules' && locked ? '<p class="tv-copy">Match rules can be changed from the main menu, between games.</p>' : '') +
-      '<div class="tv-actions tv-settings">' + contents + button('options-back', 'Back') + '</div>' + footer('Select a setting to change it · Device mappings: pause → Check / change player controls'));
+      '<div class="tv-actions tv-settings">' + contents + button('options-back', 'Back') + '</div>' + footer(section === 'rules'
+        ? 'Pierce Ball always lasts 8 seconds at half speed; other powerups use the duration above.'
+        : 'Select a setting to change it · Device mappings: pause → Check / change player controls'));
   }
   function dispatch(action) {
     // Apply settings before the cue: Sound Off is silent, while switching it

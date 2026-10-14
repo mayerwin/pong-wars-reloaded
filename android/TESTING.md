@@ -1,5 +1,18 @@
 # Android TV verification
 
+## Fixed Pierce Ball duration and visible shake (1.0.7)
+
+Pierce Ball now overrides Fast Ball with a 0.5 movement multiplier for exactly eight simulation seconds, regardless of the global duration. Another pickup refreshes that single timer. Unexpired Fast Ball boosts resume afterwards; expired boosts do not return. Web and TV settings explain the exception.
+
+Shake uses only the game's own effects/shake switches. It no longer reads system reduced motion, and pickups can shake with particles disabled. Racket hits and pickups produce one roughly 167 ms nudge of about 2–3 CSS pixels, with a 500 ms cooldown; routine territory capture still produces no shake. Physical-pixel alignment is retained.
+
+Verified on 13 October 2026: **153 JavaScript tests** pass. Chrome at desktop, high-density and mobile sizes checks half speed with four Fast Ball stacks, fixed eight seconds against a 120-second global setting, visible shake with reduced motion enabled, the game Off switch and the duration note. The dedicated Google TV API 36 emulator checks 118 live movement samples at half speed with four boosts, eight-second pickup duration, wall/racket rebounds, expiry, native pause/resume and the TV duration note. Its peak shake is 2.25 CSS pixels, with no page exceptions. Evidence: ignored `app/build/qa/pierce-v7-browser.json`, `v7-emulator-pierce.json` and `pierce/v7-tv-rules.png`.
+
+Android builds and lint pass. APK/AAB signatures verify, nine bundled assets match the tested source, and release HTML includes the new duration note. Signed SHA-256 hashes:
+
+- `pong-wars-reloaded-v1.0.7-15-tv.apk`: `0B4DC3BE45DA9D0E2F68C17CAFDF075FBA59DCA300585885509B8BFC760AB70C`
+- `pong-wars-reloaded-v1.0.7-15-play.aab`: `FDC511C4F5894F3E08B84E2E091AB5D51F9339DA41DF41D66A8B744D7946B71B`
+
 ## Pierce Ball slowdown (1.0.6)
 
 Piercing divides movement speed by three using the same effect state as penetration. Both effects therefore start, refresh and expire together. Base velocity is preserved, including Fast Ball and power-shot bonuses; extra balls inherit the same slowdown.

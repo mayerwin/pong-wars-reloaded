@@ -241,7 +241,7 @@ test('ordinary territory captures never move the board', () => {
   assert.deepEqual(JSON.parse(game.run('JSON.stringify(screenShakeOffset(1))')),{x:0,y:0});
 });
 
-test('rare impact nudges stay below a CSS pixel per axis on laptop and 4K layouts', () => {
+test('rare impact nudges are visible but bounded on laptop and 4K layouts', () => {
   for(const [css,dpr] of [[400,1],[1600,1],[960,1.25],[1600,2],[960,4]]) {
     const game=loadRenderer(css,css,dpr);game.render();
     game.run('settings.effectsEnabled=true; triggerScreenShake(100);');
@@ -253,11 +253,11 @@ test('rare impact nudges stay below a CSS pixel per axis on laptop and 4K layout
         positions.push(p);
         assert.ok(Number.isInteger(p.x) && Number.isInteger(p.y),'nudges preserve whole display pixels');
         assert.ok(p.x >= 0 && p.y >= 0,'one out-and-back nudge never oscillates around the origin');
-        assert.ok(p.x/dpr <= 1 && p.y/dpr <= 1,'canvas size cannot amplify motion');
-        if(tick>=8) assert.deepEqual(p,{x:0,y:0},'motion ends within 150 ms, including interpolation');
+        assert.ok(p.x/dpr <= 3 && p.y/dpr <= 1.6,'canvas size cannot amplify motion');
+        if(tick>=10) assert.deepEqual(p,{x:0,y:0},'motion ends within 183 ms, including interpolation');
       }
     }
-    assert.ok(positions.some(p=>p.x),'a full-strength rare impact still gives subtle visual feedback');
+    assert.ok(positions.some(p=>p.x/dpr >= 2),'a full-strength impact gives a visible two-to-three pixel nudge');
   }
 });
 
@@ -267,24 +267,36 @@ test('rapid impacts cannot extend a nudge or restart it during the cooldown', ()
   for(let tick=0;tick<30;tick++) {
     game.run('triggerScreenShake(100);updateParticles();');
     assert.equal(game.run('screenShake.cooldown'),29-tick);
-    if(tick>=7) assert.deepEqual(JSON.parse(game.run('JSON.stringify(screenShakeOffset(1))')),{x:0,y:0});
+    if(tick>=9) assert.deepEqual(JSON.parse(game.run('JSON.stringify(screenShakeOffset(1))')),{x:0,y:0});
   }
   game.run('triggerScreenShake(1);updateParticles();');
   assert.ok(game.run('screenShakeOffset(1).x > 0'),'a later distinct impact may nudge again');
 });
 
-test('live reduced-motion preference cancels active nudges and blocks further impacts', () => {
+test('system reduced motion does not override the game screen shake switch', () => {
   const game=loadRenderer(960,960,4);game.render();
   game.run('settings.effectsEnabled=true;triggerScreenShake(1);updateParticles();');
   assert.ok(game.run('screenShakeOffset(1).x > 0'));
+  const before=game.run('JSON.stringify(screenShakeOffset(1))');
   game.reduceMotion(true);
-  for(let tick=0;tick<60;tick++) game.run('triggerScreenShake(1);updateParticles();');
-  assert.deepEqual(JSON.parse(game.run('JSON.stringify(screenShakeOffset(.5))')),{x:0,y:0});
-  assert.equal(game.run('screenShake.intensity'),0);
+  assert.equal(game.run('JSON.stringify(screenShakeOffset(1))'),before,'OS preference cannot cancel an active nudge');
+  game.run('resetScreenShake();triggerScreenShake(1);updateParticles();');
+  assert.ok(game.run('screenShakeOffset(1).x > 0'),'fresh impacts still work with reduced motion enabled');
+  game.run('settings.screenShake=false;');
+  assert.deepEqual(JSON.parse(game.run('JSON.stringify(screenShakeOffset(1))')),{x:0,y:0});
   game.reduceMotion(false);
-  assert.deepEqual(JSON.parse(game.run('JSON.stringify(screenShakeOffset(.5))')),{x:0,y:0},'old effects never resume');
-  game.run('triggerScreenShake(1);updateParticles();');
+  assert.deepEqual(JSON.parse(game.run('JSON.stringify(screenShakeOffset(1))')),{x:0,y:0},'the game Off switch remains authoritative');
+});
+
+test('powerup pickup shake works independently of particles', () => {
+  const game=loadRenderer(960,960,2);game.render();
+  game.run(`settings.effectsEnabled=true;settings.particles=false;
+    collectPowerup({type:'PIERCE_BALL',gridX:2,gridY:2},player1);updateParticles();`);
   assert.ok(game.run('screenShakeOffset(1).x > 0'));
+  assert.equal(game.run('particles.length'),0);
+  game.run(`resetScreenShake();settings.screenShake=false;
+    collectPowerup({type:'PIERCE_BALL',gridX:2,gridY:2},player1);updateParticles();`);
+  assert.deepEqual(JSON.parse(game.run('JSON.stringify(screenShakeOffset(1))')),{x:0,y:0});
 });
 
 test('starting a new match clears the prior nudge and its cooldown', () => {

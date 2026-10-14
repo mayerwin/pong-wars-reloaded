@@ -33,6 +33,7 @@ const DOMINATION_THRESHOLD = 0.8;
 const BIGGER_BALL_MULT = 1.0;
 const BIGGER_RACKET_MULT = 2;
 const FASTER_BALL_MULT = 0.5;
+const PIERCE_BALL_DURATION = 8;
 
 const POWERUP_VISUAL_RADIUS = SQUARE_SIZE;
 const POWERUP_RESPAWN_QUICK = 10; // seconds after collection
@@ -371,20 +372,16 @@ let powerups = [];
 let activeEffects = { day: {}, night: {} };
 let particles = [], ballTrails = [];
 let _trailPool = []; // recycled trail objects to avoid GC
-const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-const SHAKE_DURATION_TICKS = 8;
+const SHAKE_DURATION_TICKS = 10;
 const SHAKE_COOLDOWN_TICKS = 30;
 let screenShake;
 function resetScreenShake() {
   screenShake = { intensity: 0, previousIntensity: 0, phase: 0, previousPhase: 0, cooldown: 0 };
 }
 resetScreenShake();
-// Stop an in-flight nudge immediately if the OS motion preference changes.
-if (reducedMotion.addEventListener) reducedMotion.addEventListener('change', resetScreenShake);
-else if (reducedMotion.addListener) reducedMotion.addListener(resetScreenShake);
 
 function triggerScreenShake(intensity) {
-  if (!settings.effectsEnabled || !settings.screenShake || reducedMotion.matches || screenShake.cooldown > 0) return;
+  if (!settings.effectsEnabled || !settings.screenShake || screenShake.cooldown > 0) return;
   if (!Number.isFinite(intensity) || intensity <= 0) return;
   screenShake.phase = screenShake.previousPhase = 0;
   screenShake.intensity = screenShake.previousIntensity = Math.min(1, intensity);
@@ -1159,9 +1156,9 @@ function updateBalls() {
     ball.radius = BASE_BALL_RADIUS * (1 + bigStacks * BIGGER_BALL_MULT);
 
     const fastStacks = effectStacks(ball.team, 'FASTER_BALL', now);
-    // Use the same timed state as piercing so both effects start/expire together.
-    // Scale movement, preserving velocity and any Fast Ball/power-shot bonuses.
-    const speedMult = (1 + fastStacks * FASTER_BALL_MULT) / (piercingTeams[ball.team] ? 3 : 1);
+    // Piercing temporarily overrides Fast Ball, without deleting its timer or
+    // changing the ball's velocity. Any surviving boost resumes on expiry.
+    const speedMult = piercingTeams[ball.team] ? 0.5 : 1 + fastStacks * FASTER_BALL_MULT;
 
     const totalSpeed = Math.sqrt(ball.dx * ball.dx + ball.dy * ball.dy) * speedMult;
     const subSteps = Math.max(2, Math.ceil(totalSpeed / (ball.radius * 0.5))); // higher density for trails
@@ -1525,7 +1522,7 @@ function spawnPowerup(color) {
 function collectPowerup(pu, collector) {
   const team = collector.team;
   const now = game.tickCount / TICK_RATE;
-  const dur = settings.powerupDuration;
+  const dur = pu.type === 'PIERCE_BALL' ? PIERCE_BALL_DURATION : settings.powerupDuration;
   if (pu.type === 'EXTRA_BALL') {
     const extraCount = balls.filter(b => b.team === team && b.isExtra && now < b.expiresAt).length;
     if (extraCount >= POWERUP_LIMITS.EXTRA_BALL) {
@@ -1569,11 +1566,11 @@ function collectPowerup(pu, collector) {
   }
 
   audio.playPowerup();
+  triggerScreenShake(1);
   if (settings.effectsEnabled && settings.particles) {
     const px = pu.gridX * SQUARE_SIZE + SQUARE_SIZE / 2;
     const py = pu.gridY * SQUARE_SIZE + SQUARE_SIZE / 2;
     for (let p = 0; p < 10; p++) particles.push(makeParticle(px, py, ACCENT));
-    triggerScreenShake(1);
   }
 }
 
@@ -1762,7 +1759,10 @@ function updateParticles() {
     // One gentle out-and-back nudge, never a repeating vibration. Frequent
     // hits cannot prolong it or repeatedly move the board during a rally.
     screenShake.phase = Math.min(1, screenShake.phase + 1 / SHAKE_DURATION_TICKS);
-    if (screenShake.phase === 1) screenShake.intensity = 0;
+    if (screenShake.phase >= 1 - Number.EPSILON) {
+      screenShake.phase = 1;
+      screenShake.intensity = 0;
+    }
   }
 }
 
@@ -1901,16 +1901,16 @@ function renderSquares(shakeX = 0, shakeY = 0) {
 }
 
 function screenShakeOffset(alpha) {
-  if (!settings.effectsEnabled || !settings.screenShake || reducedMotion.matches) return { x: 0, y: 0 };
+  if (!settings.effectsEnabled || !settings.screenShake) return { x: 0, y: 0 };
   const intensity = screenShake.previousIntensity + (screenShake.intensity - screenShake.previousIntensity) * alpha;
   const phase = screenShake.previousPhase + (screenShake.phase - screenShake.previousPhase) * alpha;
   const nudge = Math.sin(Math.PI * phase) * intensity;
   // Move the whole scene together and only by whole backing pixels. This
-  // avoids re-antialiasing every edge. The sub-pixel CSS amplitude stays tiny
-  // on large screens instead of increasing with the board's rendered size.
+  // avoids re-antialiasing every edge. A small, visible CSS-pixel nudge stays
+  // consistent on large screens instead of growing with the board's size.
   return {
-    x: Math.round(nudge * 0.75 * canvasPixelRatio) || 0,
-    y: Math.round(nudge * 0.3 * canvasPixelRatio) || 0,
+    x: Math.round(nudge * 2.5 * canvasPixelRatio) || 0,
+    y: Math.round(nudge * 1.2 * canvasPixelRatio) || 0,
   };
 }
 

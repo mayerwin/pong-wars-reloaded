@@ -307,11 +307,12 @@
           <div class="setting-row game-logic-setting" id="pu-dur-row">
             <label>Duration</label>
             <div class="setting-controls">
-              <input type="range" id="pu-dur-slider" min="10" max="120" value="40" step="5">
+              <input type="range" id="pu-dur-slider" min="10" max="120" value="40" step="5" aria-describedby="pu-duration-note">
               <span class="setting-value" id="pu-dur-label">40s</span>
               <button class="reset-btn" data-key="powerupDuration" title="Reset to default">&#x21BA;</button>
             </div>
           </div>
+          <p class="setting-note" id="pu-duration-note">Pierce Ball always lasts 8 seconds at half speed.</p>
           <div class="setting-row game-logic-setting" id="pu-mirror-row">
             <label>Mirrored Types</label>
             <div class="setting-controls">

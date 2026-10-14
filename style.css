@@ -1448,6 +1448,14 @@ body.is-small-screen .mobile-only {
   min-width: 80px;
 }
 
+.setting-note {
+  margin: 0 0 10px;
+  color: #adbfca;
+  font-size: 10px;
+  line-height: 1.5;
+  text-align: left;
+}
+
 .setting-controls {
   display: flex;
   align-items: center;
