@@ -1,2 +1,1 @@
-Pierce Ball now lasts a fixed 6 seconds at half normal speed, ignoring Fast Ball boosts. Repeat pickups refresh the timer without stacking.
-Restored the previous tiny, brief screen shake. The game still uses its own shake switch independently of Windows or other system reduced-motion settings.
+Reduced menu music volume by 20% for a better balance with game sounds.

@@ -96,7 +96,7 @@ test('the recording is decoded once and loops natively without a JavaScript sche
   assert.equal(source.buffer, h.buffer); assert.equal(source.loop, true);
   assert.equal(source.loopStart, 0); assert.equal(source.loopEnd, h.buffer.duration);
   assert.deepEqual(source.starts, [[0, 0]]);
-  assert.equal(h.target(), 0.7 * 0.25);
+  assert.equal(h.target(), 0.7 * 0.20);
   for (let i = 0; i < 30; i++) { h.music.setActive(true); await h.music.unlock(); }
   h.advance(600000);
   assert.equal(h.timers.size, 0, 'the audio graph owns the loop timing');
@@ -148,9 +148,9 @@ test('rapid menu toggles cancel fade cleanup without stacking looping sources', 
 
 test('volume and master/music mute remain bounded and preserve cached recording', async () => {
   const h = harness(); h.music.setActive(true); await settle();
-  h.music.setVolume(0.2); assert.equal(h.target(), 0.2 * 0.25);
-  h.music.setVolume(NaN); assert.equal(h.target(), 0.2 * 0.25);
-  h.music.setVolume(5); assert.equal(h.target(), 0.25);
+  h.music.setVolume(0.2); assert.equal(h.target(), 0.2 * 0.20);
+  h.music.setVolume(NaN); assert.equal(h.target(), 0.2 * 0.20);
+  h.music.setVolume(5); assert.equal(h.target(), 0.20);
   h.music.setEnabled(false); h.advance(550); await settle();
   assert.equal(h.ctx.state, 'suspended'); assert.equal(h.music._source, null);
   h.music.setEnabled(true); await settle(); assert.equal(h.music._playing, true);

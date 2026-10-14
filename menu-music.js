@@ -10,7 +10,7 @@
   const finite = value => typeof value === 'number' && Number.isFinite(value);
   const LOAD_RETRY_MS = 3000;
   // The recording is mastered much louder than individual game sound effects.
-  const MUSIC_GAIN = 0.25;
+  const MUSIC_GAIN = 0.20;
 
   function envelopeAt(points, time) {
     if (time <= points[0][0]) return points[0][1];
