@@ -1,5 +1,23 @@
 # Android TV verification
 
+## Gentler motion and Pierce Ball (1.0.5)
+
+Territory capture no longer moves the board. Racket hits and powerup pickups produce a single 133 ms nudge, capped at about one CSS pixel with a 500 ms cooldown. The renderer keeps whole physical-pixel offsets and immediately stops shake when the system's reduced-motion preference changes.
+
+Pierce Ball applies to the collecting team's existing and future balls for the configured duration. It captures territory without reflection and passes through other balls; walls, rackets and racket-protected cells retain their normal behavior. Repeated pickups refresh one effect. A static ring and HUD icon identify it even with visual effects disabled.
+
+Verified on 13 October 2026:
+
+- **148 JavaScript tests** pass. New regressions cover continuous capture with stacked speed/size, exact scores, four walls, rotated rackets, protected cells, ball-to-ball passage, extra balls, refresh/expiry, spawn pools, motion limits, cooldown and reduced motion.
+- Isolated Chrome at 1440 × 900 (DPR 1), 1920 × 1080 (DPR 2) and 390 × 844 (DPR 3) captures a continuous path through enemy territory and renders the new pickup, ring and HUD. Canvas backing size matches displayed physical pixels. Continuous impact requests leave the board stationary for at least 46 of 60 simulation ticks; live reduced motion produces zero displacement. No page exceptions occurred. Evidence: ignored `app/build/qa/pierce-browser.json` and `pierce-web-*.png`.
+- Android debug/release builds, native unit tests and lint pass. Signed APK/AAB checks pass, and nine bundled game/TV/audio assets match the tested source byte for byte (`app/build/qa/v5-release-assets.json`).
+- The dedicated 720p Google TV API 36 emulator passes native remote setup, match start, pickup collection, pause and resume. Its real WebView loop verifies both regular and extra balls capture without territory reflection, walls/rackets still rebound, expiry restores reflection and removes the HUD badge, and shake stays below one CSS pixel per axis. Native audio is ready with all twelve samples and no failures; no page exceptions occurred. Reproduce with `node android/tests/emulator-pierce.cjs` after a fresh debug install in the dedicated AVD. Screenshots and observations are in ignored `app/build/qa/pierce/`.
+
+Signed release SHA-256 hashes:
+
+- `pong-wars-reloaded-v1.0.5-13-tv.apk`: `1A1981F722E02CC8F35B204A0D87FCCE66C8D6A6C6BEFE30BF8219F29F20A166`
+- `pong-wars-reloaded-v1.0.5-13-play.aab`: `7D0186057EB94DC5696A1B3A936182B74B5CEE34A592BE671961B4730FFBFBF3`
+
 ## Native effects, optional remote buttons and pixel rendering (1.0.4)
 
 The reported delay affects menus and gameplay through an HDMI/eARC soundbar or receiver. Short effects now use twelve preloaded native `SoundPool` samples with `USAGE_GAME`, without an event-time decoder or a WebView audio context. The website retains Web Audio; Android also keeps it as a fallback when a sample is unavailable. Both web contexts request interactive latency. Native mute, focus loss, page reload and backgrounding stop effects rather than replaying them later. This removes WebView buffering from the normal effects path; it does not measure or compensate for a physical HDMI/eARC delay.

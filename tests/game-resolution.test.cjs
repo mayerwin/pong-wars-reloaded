@@ -63,7 +63,8 @@ function loadRenderer(width = 800, height = width, dpr = 1, observeResize = true
     observe(target) { this.targets.add(target); }
     disconnect() { this.targets.clear(); }
   }
-  const window = {...events(),devicePixelRatio:dpr,matchMedia:()=>({...events(),matches:true})};
+  const motionPreference = {...events(),matches:false};
+  const window = {...events(),devicePixelRatio:dpr,matchMedia:query=>query === '(prefers-reduced-motion: reduce)' ? motionPreference : {...events(),matches:true}};
   if (observeResize) window.ResizeObserver = ResizeObserver;
   const document = {...events(),body:element('body'),hidden:false,getElementById:element,querySelectorAll:()=>[]};
   const timeouts = new Map(); let nextTimeout = 0;
@@ -81,6 +82,7 @@ function loadRenderer(width = 800, height = width, dpr = 1, observeResize = true
   return {window,document,canvas,draws,run,api:window.PongGame,
     get reads() { return reads; }, get writes() { return writes; },
     render() { draws.length=0; run('render(1)'); assert.equal(stack.length,0); },
+    reduceMotion(value) { motionPreference.matches=value;motionPreference.emit('change'); },
     position(left,top) { rect={...rect,left,top};window.emit('resize'); },
     resize(w,h=w,event='observer') {
       rect = {width:w,height:h};
@@ -223,6 +225,76 @@ test('shake cadence does not depend on display refresh and settles completely', 
     assert.equal(slow.run('JSON.stringify(screenShakeOffset(1))'),fast.run('JSON.stringify(screenShakeOffset(1))'));
   }
   assert.deepEqual(JSON.parse(slow.run('JSON.stringify(screenShakeOffset(1))')),{x:0,y:0});
+});
+
+test('ordinary territory captures never move the board', () => {
+  const game=loadRenderer(960,960,4);
+  game.run(`settings.effectsEnabled=true; audio.playBounce=()=>{};
+    for(let tick=0;tick<120;tick++) {
+      squares[20][10]=NIGHT_COLOR;
+      checkSquareCollision(makeBall(512.5,262.5,7,7,'day'));
+      updateParticles();
+    }`);
+  assert.equal(game.run('squares[20][10] === DAY_COLOR'),true,'the collision really captured enemy territory');
+  assert.equal(game.run('screenShake.cooldown'),0,'territory contacts do not request a nudge');
+  game.render();
+  assert.deepEqual(JSON.parse(game.run('JSON.stringify(screenShakeOffset(1))')),{x:0,y:0});
+});
+
+test('rare impact nudges stay below a CSS pixel per axis on laptop and 4K layouts', () => {
+  for(const [css,dpr] of [[400,1],[1600,1],[960,1.25],[1600,2],[960,4]]) {
+    const game=loadRenderer(css,css,dpr);game.render();
+    game.run('settings.effectsEnabled=true; triggerScreenShake(100);');
+    const positions=[];
+    for(let tick=0;tick<12;tick++) {
+      game.run('updateParticles();');
+      for(const alpha of [0,0.25,0.5,0.75,1]) {
+        const p=JSON.parse(game.run(`JSON.stringify(screenShakeOffset(${alpha}))`));
+        positions.push(p);
+        assert.ok(Number.isInteger(p.x) && Number.isInteger(p.y),'nudges preserve whole display pixels');
+        assert.ok(p.x >= 0 && p.y >= 0,'one out-and-back nudge never oscillates around the origin');
+        assert.ok(p.x/dpr <= 1 && p.y/dpr <= 1,'canvas size cannot amplify motion');
+        if(tick>=8) assert.deepEqual(p,{x:0,y:0},'motion ends within 150 ms, including interpolation');
+      }
+    }
+    assert.ok(positions.some(p=>p.x),'a full-strength rare impact still gives subtle visual feedback');
+  }
+});
+
+test('rapid impacts cannot extend a nudge or restart it during the cooldown', () => {
+  const game=loadRenderer(960,960,4);game.render();
+  game.run('settings.effectsEnabled=true; triggerScreenShake(1);');
+  for(let tick=0;tick<30;tick++) {
+    game.run('triggerScreenShake(100);updateParticles();');
+    assert.equal(game.run('screenShake.cooldown'),29-tick);
+    if(tick>=7) assert.deepEqual(JSON.parse(game.run('JSON.stringify(screenShakeOffset(1))')),{x:0,y:0});
+  }
+  game.run('triggerScreenShake(1);updateParticles();');
+  assert.ok(game.run('screenShakeOffset(1).x > 0'),'a later distinct impact may nudge again');
+});
+
+test('live reduced-motion preference cancels active nudges and blocks further impacts', () => {
+  const game=loadRenderer(960,960,4);game.render();
+  game.run('settings.effectsEnabled=true;triggerScreenShake(1);updateParticles();');
+  assert.ok(game.run('screenShakeOffset(1).x > 0'));
+  game.reduceMotion(true);
+  for(let tick=0;tick<60;tick++) game.run('triggerScreenShake(1);updateParticles();');
+  assert.deepEqual(JSON.parse(game.run('JSON.stringify(screenShakeOffset(.5))')),{x:0,y:0});
+  assert.equal(game.run('screenShake.intensity'),0);
+  game.reduceMotion(false);
+  assert.deepEqual(JSON.parse(game.run('JSON.stringify(screenShakeOffset(.5))')),{x:0,y:0},'old effects never resume');
+  game.run('triggerScreenShake(1);updateParticles();');
+  assert.ok(game.run('screenShakeOffset(1).x > 0'));
+});
+
+test('starting a new match clears the prior nudge and its cooldown', () => {
+  const game=loadRenderer(960,960,4);game.render();
+  game.run('settings.effectsEnabled=true;triggerScreenShake(1);updateParticles();');
+  game.api.start({mode:'2p',duration:180,winCondition:'timed'});
+  assert.equal(game.run('screenShake.cooldown'),0);
+  assert.deepEqual(JSON.parse(game.run('JSON.stringify(screenShakeOffset(.5))')),{x:0,y:0});
+  game.run('triggerScreenShake(1);updateParticles();');
+  assert.ok(game.run('screenShakeOffset(1).x > 0'));
 });
 
 test('shake never uncovers transparent or wrong-color edges of a solid territory', () => {

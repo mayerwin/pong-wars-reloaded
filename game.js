@@ -371,12 +371,24 @@ let powerups = [];
 let activeEffects = { day: {}, night: {} };
 let particles = [], ballTrails = [];
 let _trailPool = []; // recycled trail objects to avoid GC
-let screenShake = { intensity: 0, previousIntensity: 0, phase: 0, previousPhase: 0 };
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+const SHAKE_DURATION_TICKS = 8;
+const SHAKE_COOLDOWN_TICKS = 30;
+let screenShake;
+function resetScreenShake() {
+  screenShake = { intensity: 0, previousIntensity: 0, phase: 0, previousPhase: 0, cooldown: 0 };
+}
+resetScreenShake();
+// Stop an in-flight nudge immediately if the OS motion preference changes.
+if (reducedMotion.addEventListener) reducedMotion.addEventListener('change', resetScreenShake);
+else if (reducedMotion.addListener) reducedMotion.addListener(resetScreenShake);
 
 function triggerScreenShake(intensity) {
-  if (!settings.effectsEnabled || !settings.screenShake) return;
-  if (screenShake.intensity === 0) screenShake.phase = screenShake.previousPhase = 0;
-  screenShake.intensity = Math.max(screenShake.intensity, intensity);
+  if (!settings.effectsEnabled || !settings.screenShake || reducedMotion.matches || screenShake.cooldown > 0) return;
+  if (!Number.isFinite(intensity) || intensity <= 0) return;
+  screenShake.phase = screenShake.previousPhase = 0;
+  screenShake.intensity = screenShake.previousIntensity = Math.min(1, intensity);
+  screenShake.cooldown = SHAKE_COOLDOWN_TICKS;
 }
 let dayScore = 0, nightScore = 0;
 let lastSpawn = { day: 0, night: 0 };
@@ -1131,6 +1143,10 @@ function predictBallY(ball, targetX) {
 // ==================== BALL PHYSICS ====================
 function updateBalls() {
   const now = game.tickCount / TICK_RATE;
+  const piercingTeams = {
+    day: effectStacks('day', 'PIERCE_BALL', now) > 0,
+    night: effectStacks('night', 'PIERCE_BALL', now) > 0,
+  };
   // Remove expired extra balls in-place (avoids allocating a new array via filter)
   for (let i = balls.length - 1; i >= 0; i--) {
     if (balls[i].isExtra && now >= balls[i].expiresAt) {
@@ -1204,7 +1220,7 @@ function updateBalls() {
       }
 
       if (ball.skipSquareCheck > 0) ball.skipSquareCheck--;
-      else checkSquareCollision(ball);
+      else checkSquareCollision(ball, piercingTeams[ball.team]);
 
       checkRacketCollision(ball, player1);
       checkRacketCollision(ball, player2);
@@ -1226,6 +1242,8 @@ function updateBalls() {
   for (let i = 0; i < balls.length - 1; i++) {
     for (let j = i + 1; j < balls.length; j++) {
       const a = balls[i], b = balls[j];
+      // Piercing balls can only rebound off rackets and the arena walls.
+      if (piercingTeams[a.team] || piercingTeams[b.team]) continue;
       const dx = b.x - a.x, dy = b.y - a.y;
       const distSq = dx * dx + dy * dy;
       const minDist = a.radius + b.radius;
@@ -1250,7 +1268,7 @@ function updateBalls() {
   }
 }
 
-function checkSquareCollision(ball) {
+function checkSquareCollision(ball, piercing = effectStacks(ball.team, 'PIERCE_BALL', game.tickCount / TICK_RATE) > 0) {
   let painted = false, bouncedX = false, bouncedY = false;
   const opponent = ball.team === 'day' ? player2 : player1;
   const r = ball.radius;
@@ -1280,6 +1298,9 @@ function checkSquareCollision(ball) {
       else { dayScore++; nightScore--; }
       painted = true;
 
+      // Keep capturing territory, but carry the same trajectory through it.
+      if (piercing) continue;
+
       // Bounce direction: use vector from ball center to square center
       const scx = sqL + SQUARE_SIZE / 2, scy = sqT + SQUARE_SIZE / 2;
       if (Math.abs(ball.x - scx) > Math.abs(ball.y - scy)) {
@@ -1291,7 +1312,6 @@ function checkSquareCollision(ball) {
   }
   if (painted) {
     audio.playBounce(ball.team);
-    triggerScreenShake(1);
   }
 }
 
@@ -1353,7 +1373,7 @@ function checkRacketCollision(ball, player) {
     ball.skipSquareCheck = 2; // brief skip to avoid immediate re-bounce into squares behind racket
     audio.playRacketHit();
     if (settings.effectsEnabled) {
-      triggerScreenShake(3.5);
+      triggerScreenShake(0.8);
       if (settings.particles) for (let p = 0; p < 5; p++) particles.push(makeParticle(ball.x, ball.y, ball.ballColor));
     }
   }
@@ -1384,9 +1404,9 @@ function effectStacks(team, type, now) {
   return count;
 }
 
-const POWERUP_TYPES = ['BIGGER_BALL', 'EXTRA_BALL', 'BIGGER_RACKET', 'FASTER_BALL', 'SHRINK_RACKET'];
-const POWERUP_HUD = { BIGGER_BALL: '\u25C9', EXTRA_BALL: '\u271A', BIGGER_RACKET: '\u21D5', FASTER_BALL: '\u00BB', SHRINK_RACKET: '\u2913' };
-const POWERUP_NAMES = { BIGGER_BALL: 'Big Ball', EXTRA_BALL: 'Extra Ball', BIGGER_RACKET: 'Big Racket', FASTER_BALL: 'Fast Ball', SHRINK_RACKET: 'Shrink Foe' };
+const POWERUP_TYPES = ['BIGGER_BALL', 'EXTRA_BALL', 'BIGGER_RACKET', 'FASTER_BALL', 'SHRINK_RACKET', 'PIERCE_BALL'];
+const POWERUP_HUD = { BIGGER_BALL: '\u25C9', EXTRA_BALL: '\u271A', BIGGER_RACKET: '\u21D5', FASTER_BALL: '\u00BB', SHRINK_RACKET: '\u2913', PIERCE_BALL: '\u21E5' };
+const POWERUP_NAMES = { BIGGER_BALL: 'Big Ball', EXTRA_BALL: 'Extra Ball', BIGGER_RACKET: 'Big Racket', FASTER_BALL: 'Fast Ball', SHRINK_RACKET: 'Shrink Foe', PIERCE_BALL: 'Pierce Ball' };
 const MIN_RACKET_HEIGHT = SQUARE_SIZE * 3; // minimum racket height (3 blocks)
 const POWERUP_LIMITS = {
   BIGGER_BALL: 5,
@@ -1394,6 +1414,7 @@ const POWERUP_LIMITS = {
   BIGGER_RACKET: 3,
   FASTER_BALL: 4,
   SHRINK_RACKET: 3,
+  PIERCE_BALL: 1, // Team-wide on/off effect; another pickup refreshes its duration.
 };
 
 // Mirrored powerup sequence state
@@ -1550,7 +1571,7 @@ function collectPowerup(pu, collector) {
     const px = pu.gridX * SQUARE_SIZE + SQUARE_SIZE / 2;
     const py = pu.gridY * SQUARE_SIZE + SQUARE_SIZE / 2;
     for (let p = 0; p < 10; p++) particles.push(makeParticle(px, py, ACCENT));
-    triggerScreenShake(4);
+    triggerScreenShake(1);
   }
 }
 
@@ -1734,12 +1755,12 @@ function updateParticles() {
   }
   screenShake.previousIntensity = screenShake.intensity;
   screenShake.previousPhase = screenShake.phase;
+  if (screenShake.cooldown > 0) screenShake.cooldown--;
   if (screenShake.intensity > 0) {
-    // A short damped kick at 9 Hz, advanced by physics rather than display
-    // frames. Fresh random offsets per render made 60/120 Hz TVs shimmer.
-    screenShake.phase += 2 * Math.PI * 9 / TICK_RATE;
-    screenShake.intensity *= 0.88;
-    if (screenShake.intensity < 0.3) screenShake.intensity = 0;
+    // One gentle out-and-back nudge, never a repeating vibration. Frequent
+    // hits cannot prolong it or repeatedly move the board during a rally.
+    screenShake.phase = Math.min(1, screenShake.phase + 1 / SHAKE_DURATION_TICKS);
+    if (screenShake.phase === 1) screenShake.intensity = 0;
   }
 }
 
@@ -1836,6 +1857,15 @@ function drawPowerupIcon(cx, cy, type, size) {
       ctx.moveTo(cx, cy - s * 0.25); ctx.lineTo(cx - s * 0.3, cy + s * 0.1); ctx.lineTo(cx + s * 0.3, cy + s * 0.1);
       ctx.closePath(); ctx.fill();
       break;
+    case 'PIERCE_BALL':
+      // Arrow passing through a broken territory edge.
+      ctx.beginPath();
+      ctx.moveTo(cx - s * 0.05, cy - s * 0.8); ctx.lineTo(cx - s * 0.05, cy - s * 0.3);
+      ctx.moveTo(cx - s * 0.05, cy + s * 0.3); ctx.lineTo(cx - s * 0.05, cy + s * 0.8);
+      ctx.moveTo(cx - s * 0.8, cy); ctx.lineTo(cx + s * 0.7, cy);
+      ctx.moveTo(cx + s * 0.3, cy - s * 0.4); ctx.lineTo(cx + s * 0.7, cy); ctx.lineTo(cx + s * 0.3, cy + s * 0.4);
+      ctx.stroke();
+      break;
   }
 }
 
@@ -1869,14 +1899,16 @@ function renderSquares(shakeX = 0, shakeY = 0) {
 }
 
 function screenShakeOffset(alpha) {
-  if (!settings.effectsEnabled || !settings.screenShake) return { x: 0, y: 0 };
+  if (!settings.effectsEnabled || !settings.screenShake || reducedMotion.matches) return { x: 0, y: 0 };
   const intensity = screenShake.previousIntensity + (screenShake.intensity - screenShake.previousIntensity) * alpha;
   const phase = screenShake.previousPhase + (screenShake.phase - screenShake.previousPhase) * alpha;
+  const nudge = Math.sin(Math.PI * phase) * intensity;
   // Move the whole scene together and only by whole backing pixels. This
-  // avoids re-antialiasing every edge at each frame of the shake.
+  // avoids re-antialiasing every edge. The sub-pixel CSS amplitude stays tiny
+  // on large screens instead of increasing with the board's rendered size.
   return {
-    x: Math.round(Math.sin(phase) * intensity * 0.5 * canvas.width / CANVAS_SIZE) || 0,
-    y: Math.round(Math.sin(phase * 0.73) * intensity * 0.35 * canvas.height / CANVAS_SIZE) || 0,
+    x: Math.round(nudge * 0.75 * canvasPixelRatio) || 0,
+    y: Math.round(nudge * 0.3 * canvasPixelRatio) || 0,
   };
 }
 
@@ -1957,6 +1989,10 @@ function render(alpha = 1) {
   drawRotatedPlayer(player2, p2Color, alpha);
 
   // Balls
+  const piercingTeams = {
+    day: effectStacks('day', 'PIERCE_BALL', game.tickCount / TICK_RATE) > 0,
+    night: effectStacks('night', 'PIERCE_BALL', game.tickCount / TICK_RATE) > 0,
+  };
   for (const ball of balls) {
     const drawX = ball.oldX + (ball.x - ball.oldX) * alpha;
     const drawY = ball.oldY + (ball.y - ball.oldY) * alpha;
@@ -1968,6 +2004,12 @@ function render(alpha = 1) {
       ctx.beginPath();
       ctx.arc(drawX, drawY, ball.radius, 0, Math.PI * 2);
       ctx.strokeStyle = ACCENT; ctx.lineWidth = 1; ctx.stroke(); ctx.closePath();
+    }
+    // A steady outline communicates the gameplay state even with effects off.
+    if (piercingTeams[ball.team]) {
+      ctx.beginPath();
+      ctx.arc(drawX, drawY, ball.radius + 3, 0, Math.PI * 2);
+      ctx.strokeStyle = ACCENT; ctx.lineWidth = 2; ctx.stroke(); ctx.closePath();
     }
   }
 
@@ -2725,7 +2767,7 @@ function startGame() {
 
   powerups = []; activeEffects = { day: {}, night: {} };
   particles = []; ballTrails = []; _trailPool = [];
-  screenShake = { intensity: 0, previousIntensity: 0, phase: 0, previousPhase: 0 };
+  resetScreenShake();
   _prevDayScore = -1; _prevNightScore = -1; _prevDayPct = -1; _prevShowBar = null;
   teleportState = { p1: { holdFrames: 0, remaining: TELEPORT_MAX }, p2: { holdFrames: 0, remaining: TELEPORT_MAX } };
   dayScore = TOTAL_SQUARES / 2; nightScore = TOTAL_SQUARES / 2;

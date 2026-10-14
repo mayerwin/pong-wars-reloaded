@@ -66,9 +66,11 @@ Powerups spawn as **stars** (Night territory) or **suns** (Day territory) every 
 | Big Racket     | ⇕    | Grows your racket by 2 blocks per stack (max 3 stacks) |
 | Fast Ball      | »    | Increases ball speed by +50% base per stack (max 4 stacks) |
 | Shrink Foe     | ⤓    | Shrinks opponent's racket by 2 blocks per stack (max 3 stacks, min 3 blocks) |
+| Pierce Ball    | ⇥    | All your balls capture enemy territory without bouncing; only walls and rackets deflect them |
 
 - Effects stack cumulatively (up to max per type). Collecting beyond the cap replaces the oldest, extending its duration.
 - Extra balls cap at 8 per team; additional pickups extend the oldest ball's duration.
+- Pierce Ball lasts for the configured powerup duration and includes extra balls. Another pickup refreshes it. A ring marks affected balls, which also pass through other balls.
 - Active powerups are shown in the HUD next to each team's score, with stack counts.
 
 ## HUD
@@ -93,7 +95,7 @@ Access settings via the **gear icon** (⚙) during gameplay, or from the main me
 ### Visual Effects
 - **Master toggle**: enables/disables all visual effects
 - **Color Theme**: choose between Coral, Sunset, or Cyber palettes
-- **Screen Shake**: camera shake on ball impacts
+- **Screen Shake**: tiny, brief nudges on racket hits and powerup pickups; territory capture stays steady. Respects your device's reduced-motion preference.
 - **Racket Outline**: colored outline around rackets
 - **Grid Lines**: subtle grid overlay (off by default)
 - **Particles**: impact and confetti particles
@@ -124,7 +126,7 @@ If a racket becomes completely trapped by enemy territory (can't move or rotate 
 ## Ball Physics
 
 - Sub-stepped movement prevents balls from passing through rackets at high speed
-- Ball-ball elastic collision prevents overlapping when multiple balls are in play
+- Ball-ball elastic collision prevents overlapping when multiple balls are in play, except while Pierce Ball is active
 - Balls pass through squares protected by the opponent's racket (no stuck oscillation)
 
 ## Android TV / Google TV beta
