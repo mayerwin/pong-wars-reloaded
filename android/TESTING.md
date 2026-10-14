@@ -1,5 +1,16 @@
 # Android TV verification
 
+## Pierce Ball slowdown (1.0.6)
+
+Piercing divides movement speed by three using the same effect state as penetration. Both effects therefore start, refresh and expire together. Base velocity is preserved, including Fast Ball and power-shot bonuses; extra balls inherit the same slowdown.
+
+Verified on 13 October 2026: **150 JavaScript tests** pass, including speed ratios for both teams, regular/extra balls, Fast Ball stacks, refresh without compounding and exact-tick expiry. Isolated Chrome at desktop, high-density and mobile sizes confirms one-third movement through territory. The dedicated Google TV API 36 emulator observes 118 movement samples from its real loop at exactly one-third speed, plus native remote pickup, wall/racket rebounds, expiry, pause and resume without page exceptions. The emulator harness now waits for WebView game initialization before reading state. Evidence is in ignored `app/build/qa/pierce-slow-browser.json` and `v6-emulator-pierce.json`.
+
+Android debug and signed release builds pass. APK/AAB signatures verify, and nine bundled game/TV/audio assets match the tested source. No native code changed in this release. Signed SHA-256 hashes:
+
+- `pong-wars-reloaded-v1.0.6-14-tv.apk`: `EC6A1431812376DEF7224C9F25049B0B5E46DB3756CAD372DBD50477DEB6FDEF`
+- `pong-wars-reloaded-v1.0.6-14-play.aab`: `01DD188212F9CD807F91FAE48AD0728AEE0020FFD441B1B67F67BE48138718DD`
+
 ## Gentler motion and Pierce Ball (1.0.5)
 
 Territory capture no longer moves the board. Racket hits and powerup pickups produce a single 133 ms nudge, capped at about one CSS pixel with a 500 ms cooldown. The renderer keeps whole physical-pixel offsets and immediately stops shake when the system's reduced-motion preference changes.

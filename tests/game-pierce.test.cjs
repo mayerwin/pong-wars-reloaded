@@ -30,7 +30,7 @@ test('Pierce Ball captures a continuous path at stacked size/speed without a ter
     balls = [makeBall(400, 100, 14, 5, 'day')];
     pickup('PIERCE_BALL'); pickup('BIGGER_BALL');
     for (let i = 0; i < POWERUP_LIMITS.FASTER_BALL; i++) pickup('FASTER_BALL');
-    for (let i = 0; i < 6; i++) { updateBalls(); game.tickCount++; }
+    for (let i = 0; i < 18; i++) { updateBalls(); game.tickCount++; }
   `);
   const ball = data(site, 'balls[0]');
   assert.ok(Math.abs(ball.x - 652) < 1e-9);
@@ -55,8 +55,8 @@ test('ordinary balls retain territory rebounds', () => {
 
 test('Pierce Ball keeps wall rebounds on all four sides', () => {
   for (const [x, y, dx, dy, expectedDx, expectedDy] of [
-    [785, 200, 7, 5, -7, 5], [15, 200, -7, 5, 7, 5],
-    [200, 785, 7, 5, 7, -5], [200, 15, 7, -5, 7, 5],
+    [786, 200, 7, 5, -7, 5], [14, 200, -7, 5, 7, 5],
+    [200, 786, 7, 5, 7, -5], [200, 14, 7, -5, 7, 5],
   ]) {
     const site = game();
     site.run(`fillTerritory(NIGHT_COLOR); balls = [makeBall(${x}, ${y}, ${dx}, ${dy}, 'day')]; pickup('PIERCE_BALL'); updateBalls();`);
@@ -107,7 +107,11 @@ test('balls pass through one another if either team has Pierce Ball', () => {
       updateBalls();
     `);
     assert.deepEqual(data(site, 'balls.map(ball => ball.dx)'), piercingPlayer ? [7, -7] : [-7, 7]);
-    if (piercingPlayer) assert.deepEqual(data(site, 'balls.map(ball => ball.x)'), [307, 323]);
+    if (piercingPlayer) {
+      const positions = data(site, 'balls.map(ball => ball.x)');
+      const expected = piercingPlayer === 'player1' ? [300 + 7 / 3, 323] : [307, 330 - 7 / 3];
+      positions.forEach((x, i) => assert.ok(Math.abs(x - expected[i]) < 1e-9));
+    }
   }
 });
 
@@ -166,4 +170,58 @@ test('starting another match clears Pierce Ball', () => {
   site.run("pickup('PIERCE_BALL');");
   site.api.start();
   assert.equal(site.run("effectStacks('day', 'PIERCE_BALL', 0)"), 0);
+});
+
+test('piercing moves every allied ball at one-third speed, including Fast Ball boosts', () => {
+  for (const stacks of [0, 1, 4]) {
+    for (const team of ['day', 'night']) {
+      const site = game();
+      site.run(`
+        const collector = ${team === 'day' ? 'player1' : 'player2'};
+        for (let i = 0; i < ${stacks}; i++) pickup('FASTER_BALL', collector);
+        function measureMotion() {
+          balls = [makeBall(200, 200, 9, 6, '${team}'), makeBall(400, 400, 9, 6, '${team}')];
+          balls[1].isExtra = true; balls[1].expiresAt = 100;
+          for (const ball of balls) ball.skipSquareCheck = 100;
+          const origins = balls.map(b => [b.x, b.y]);
+          updateBalls();
+          return balls.map((b, i) => ({ x: b.x - origins[i][0], y: b.y - origins[i][1], dx: b.dx, dy: b.dy }));
+        }
+      `);
+      const normal = data(site, 'measureMotion()');
+      site.run("pickup('PIERCE_BALL', collector);");
+      const slow = data(site, 'measureMotion()');
+      for (let i = 0; i < 2; i++) {
+        assert.ok(Math.abs(slow[i].x * 3 - normal[i].x) < 1e-9);
+        assert.ok(Math.abs(slow[i].y * 3 - normal[i].y) < 1e-9);
+        assert.equal(slow[i].dx, normal[i].dx, 'base velocity is preserved, not repeatedly divided');
+        assert.equal(slow[i].dy, normal[i].dy);
+      }
+    }
+  }
+});
+
+test('refresh never compounds slowdown; piercing and slowdown expire on the same tick', () => {
+  const site = game();
+  site.run(`
+    settings.powerupDuration = 30; pickup('FASTER_BALL');
+    settings.powerupDuration = 10; pickup('PIERCE_BALL');
+    function advanceSlowBall() {
+      balls = [makeBall(400, 137.5, 9, 6, 'day')];
+      balls[0].skipSquareCheck = 100;
+      updateBalls();
+      return balls[0].x - 400;
+    }
+  `);
+  assert.ok(Math.abs(site.run('advanceSlowBall()') - 4.5) < 1e-9);
+  site.run("game.tickCount = 9 * TICK_RATE; pickup('PIERCE_BALL');");
+  assert.ok(Math.abs(site.run('advanceSlowBall()') - 4.5) < 1e-9, 'refresh retains one-third speed');
+  site.run('game.tickCount = 19 * TICK_RATE - 1;');
+  assert.equal(site.run("effectStacks('day', 'PIERCE_BALL', game.tickCount / TICK_RATE)"), 1);
+  assert.ok(Math.abs(site.run('advanceSlowBall()') - 4.5) < 1e-9);
+  site.run('game.tickCount++;');
+  assert.equal(site.run("effectStacks('day', 'PIERCE_BALL', game.tickCount / TICK_RATE)"), 0);
+  assert.ok(Math.abs(site.run('advanceSlowBall()') - 13.5) < 1e-9, 'remaining Fast Ball boost returns immediately');
+  site.run('fillTerritory(NIGHT_COLOR); checkSquareCollision(balls[0]);');
+  assert.ok(site.run('balls[0].dx < 0 || balls[0].dy < 0'), 'territory rebound returns on that same tick');
 });

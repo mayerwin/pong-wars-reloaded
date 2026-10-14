@@ -1,2 +1,1 @@
-Much gentler screen shake: territory capture stays steady, with only tiny, brief nudges on racket hits and powerup pickups. Reduced-motion preferences disable shake.
-New Pierce Ball powerup: all your balls capture enemy territory without bouncing, passing through other balls and rebounding only off walls and rackets. Extra balls inherit the effect; another pickup refreshes its duration.
+Pierce Ball now slows all affected balls to one-third speed, including extra balls and Fast Ball boosts. Piercing and the slowdown expire together; collecting it again refreshes both. Normal speed returns as soon as piercing ends.

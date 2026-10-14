@@ -20,8 +20,9 @@ async function main() {
     throw new Error(description);
   };
   try {
+    await wait('Boolean(window.PongGame && window.PongAndroid)', 'WebView game initialization', 20000);
     await app.waitFor(s => s.title.includes('PONG WARS'), 'Home screen');
-    await app.evaluate('PongGame.configure({powerupDuration: 10, screenShake: true, effectsEnabled: true})');
+    await app.evaluate('PongGame.configure({powerupDuration: 30, screenShake: true, effectsEnabled: true})');
     await app.nativeKey('DPAD_CENTER');
     await app.waitFor(s => s.title.includes('Pick up'), 'Solo controller join');
     await app.nativeKey('DPAD_CENTER');
@@ -43,7 +44,7 @@ async function main() {
     await app.waitFor(s => s.game.state === 'playing', 'Native match start');
 
     await app.evaluate(`(() => {
-      window.__pierceQA = {captures: [], rackets: [], wall: false, renders: 0, maxShakeCss: 0};
+      window.__pierceQA = {captures: [], rackets: [], speeds: [], speedUntil: 0, wall: false, renders: 0, maxShakeCss: 0};
       const squareCheck = checkSquareCollision, racketCheck = checkRacketCollision, ballUpdate = updateBalls, draw = render;
       checkSquareCollision = function(ball, ...args) {
         const score = dayScore, dx = ball.dx, dy = ball.dy;
@@ -62,7 +63,11 @@ async function main() {
         return result;
       };
       updateBalls = function(...args) {
+        const before = game.tickCount < __pierceQA.speedUntil ? balls.map(b => ({b, x:b.x, y:b.y, dx:b.dx, dy:b.dy})) : [];
         const result = ballUpdate(...args);
+        for (const p of before) __pierceQA.speeds.push({
+          x: (p.b.x - p.x) / p.dx, y: (p.b.y - p.y) / p.dy, extra: !!p.b.isExtra,
+        });
         if (balls.some(b => b.bounceX === CANVAS_SIZE - b.radius && b.bounceT >= 0 && b.dx < 0)) __pierceQA.wall = true;
         return result;
       };
@@ -88,6 +93,14 @@ async function main() {
     await app.nativeKey('DPAD_RIGHT', 200);
     await wait("effectStacks('day','PIERCE_BALL',game.tickCount/TICK_RATE) === 1", 'Native movement must collect Pierce Ball');
     assert.ok((await app.snapshot()).game.players[0].x > 100, 'Native remote moved the racket');
+    // Observe sixty live simulation ticks on unobstructed paths. Territory is
+    // still active, so this checks both the real movement rate and penetration.
+    await app.evaluate(`(() => {
+      balls = [makeBall(350, 125, 7, 5, 'day'), makeBall(350, 275, 7, 5, 'day')];
+      balls[1].isExtra = true; balls[1].expiresAt = game.tickCount / TICK_RATE + 60;
+      __pierceQA.captures = []; __pierceQA.wall = false;
+      __pierceQA.speedUntil = game.tickCount + 60;
+    })()`);
     await wait('__pierceQA.captures.some(c => c.piercing && c.extra) && __pierceQA.captures.some(c => c.piercing && !c.extra)', 'Both balls must capture while piercing');
     assert.equal(await app.evaluate("!!document.querySelector('[title=\"Pierce Ball\"]')"), true, 'Pierce Ball HUD');
     await app.evaluate("powerups.push({type:'PIERCE_BALL',gridX:23,gridY:5,pulsePhase:0,spawnTime:game.tickCount/TICK_RATE})");
@@ -96,6 +109,8 @@ async function main() {
     await wait('__pierceQA.wall', 'Piercing balls still bounce off walls');
     evidence.live = await app.evaluate('JSON.parse(JSON.stringify(__pierceQA))');
     assert.ok(evidence.live.captures.filter(c => c.piercing).every(c => c.unchanged), 'Enemy territory must not reflect piercing balls');
+    assert.ok(evidence.live.speeds.length >= 100, 'Observe a full interval with both balls in the actual loop');
+    assert.ok(evidence.live.speeds.every(s => Math.abs(s.x - 1/3) < 1e-9 && Math.abs(s.y - 1/3) < 1e-9), 'Both live balls move at exactly one-third velocity');
     assert.ok(evidence.live.maxShakeCss <= 1, 'Any live nudge is at most one CSS pixel');
 
     await app.evaluate(`(() => {
@@ -124,7 +139,7 @@ async function main() {
     evidence.final = await app.snapshot();
     evidence.diagnostics = await app.evaluate('PongGame.getDiagnostics()');
     assert.equal(app.errors.length, 0, JSON.stringify(app.errors));
-    console.log('PASS: native start/pickup/pause/resume, two piercing balls capture, walls/racket rebound, expiry, live HUD/icon and bounded shake.');
+    console.log('PASS: native start/pickup/pause/resume, two piercing balls capture at one-third speed, walls/racket rebound, expiry, live HUD/icon and bounded shake.');
   } finally {
     fs.mkdirSync(output, {recursive:true});
     fs.writeFileSync(path.join(output, 'emulator-pierce.json'), JSON.stringify({evidence, errors:app.errors}, null, 2));

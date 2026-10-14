@@ -66,11 +66,11 @@ Powerups spawn as **stars** (Night territory) or **suns** (Day territory) every 
 | Big Racket     | ⇕    | Grows your racket by 2 blocks per stack (max 3 stacks) |
 | Fast Ball      | »    | Increases ball speed by +50% base per stack (max 4 stacks) |
 | Shrink Foe     | ⤓    | Shrinks opponent's racket by 2 blocks per stack (max 3 stacks, min 3 blocks) |
-| Pierce Ball    | ⇥    | All your balls capture enemy territory without bouncing; only walls and rackets deflect them |
+| Pierce Ball    | ⇥    | All your balls move at one-third speed and capture enemy territory without bouncing; only walls and rackets deflect them |
 
 - Effects stack cumulatively (up to max per type). Collecting beyond the cap replaces the oldest, extending its duration.
 - Extra balls cap at 8 per team; additional pickups extend the oldest ball's duration.
-- Pierce Ball lasts for the configured powerup duration and includes extra balls. Another pickup refreshes it. A ring marks affected balls, which also pass through other balls.
+- Pierce Ball and its slowdown last for the same configured duration and include extra balls. Another pickup refreshes both together. The slowdown also applies to Fast Ball boosts. A ring marks affected balls, which also pass through other balls.
 - Active powerups are shown in the HUD next to each team's score, with stack counts.
 
 ## HUD

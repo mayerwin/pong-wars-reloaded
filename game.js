@@ -1159,7 +1159,9 @@ function updateBalls() {
     ball.radius = BASE_BALL_RADIUS * (1 + bigStacks * BIGGER_BALL_MULT);
 
     const fastStacks = effectStacks(ball.team, 'FASTER_BALL', now);
-    const speedMult = 1 + (fastStacks * FASTER_BALL_MULT);
+    // Use the same timed state as piercing so both effects start/expire together.
+    // Scale movement, preserving velocity and any Fast Ball/power-shot bonuses.
+    const speedMult = (1 + fastStacks * FASTER_BALL_MULT) / (piercingTeams[ball.team] ? 3 : 1);
 
     const totalSpeed = Math.sqrt(ball.dx * ball.dx + ball.dy * ball.dy) * speedMult;
     const subSteps = Math.max(2, Math.ceil(totalSpeed / (ball.radius * 0.5))); // higher density for trails
