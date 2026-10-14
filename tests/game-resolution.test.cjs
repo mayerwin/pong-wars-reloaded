@@ -241,7 +241,7 @@ test('ordinary territory captures never move the board', () => {
   assert.deepEqual(JSON.parse(game.run('JSON.stringify(screenShakeOffset(1))')),{x:0,y:0});
 });
 
-test('rare impact nudges are visible but bounded on laptop and 4K layouts', () => {
+test('rare impact nudges stay within one CSS pixel per axis on laptop and 4K layouts', () => {
   for(const [css,dpr] of [[400,1],[1600,1],[960,1.25],[1600,2],[960,4]]) {
     const game=loadRenderer(css,css,dpr);game.render();
     game.run('settings.effectsEnabled=true; triggerScreenShake(100);');
@@ -253,11 +253,11 @@ test('rare impact nudges are visible but bounded on laptop and 4K layouts', () =
         positions.push(p);
         assert.ok(Number.isInteger(p.x) && Number.isInteger(p.y),'nudges preserve whole display pixels');
         assert.ok(p.x >= 0 && p.y >= 0,'one out-and-back nudge never oscillates around the origin');
-        assert.ok(p.x/dpr <= 3 && p.y/dpr <= 1.6,'canvas size cannot amplify motion');
-        if(tick>=10) assert.deepEqual(p,{x:0,y:0},'motion ends within 183 ms, including interpolation');
+        assert.ok(p.x/dpr <= 1 && p.y/dpr <= 1,'canvas size cannot amplify motion');
+        if(tick>=8) assert.deepEqual(p,{x:0,y:0},'motion ends within 150 ms, including interpolation');
       }
     }
-    assert.ok(positions.some(p=>p.x/dpr >= 2),'a full-strength impact gives a visible two-to-three pixel nudge');
+    assert.ok(positions.some(p=>p.x),'a full-strength rare impact still gives subtle visual feedback');
   }
 });
 
@@ -267,7 +267,7 @@ test('rapid impacts cannot extend a nudge or restart it during the cooldown', ()
   for(let tick=0;tick<30;tick++) {
     game.run('triggerScreenShake(100);updateParticles();');
     assert.equal(game.run('screenShake.cooldown'),29-tick);
-    if(tick>=9) assert.deepEqual(JSON.parse(game.run('JSON.stringify(screenShakeOffset(1))')),{x:0,y:0});
+    if(tick>=7) assert.deepEqual(JSON.parse(game.run('JSON.stringify(screenShakeOffset(1))')),{x:0,y:0});
   }
   game.run('triggerScreenShake(1);updateParticles();');
   assert.ok(game.run('screenShakeOffset(1).x > 0'),'a later distinct impact may nudge again');

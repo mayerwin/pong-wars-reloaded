@@ -1,2 +1,2 @@
-Pierce Ball now lasts a fixed 8 seconds at half normal speed, ignoring Fast Ball boosts and the global duration setting. Repeat pickups refresh the timer without stacking. Any remaining Fast Ball boost resumes afterwards.
-Screen shake is a little more visible while staying brief. It uses the game's own switch, independently of system reduced motion or particles. Territory capture stays steady.
+Pierce Ball now lasts a fixed 6 seconds at half normal speed, ignoring Fast Ball boosts. Repeat pickups refresh the timer without stacking.
+Restored the previous tiny, brief screen shake. The game still uses its own shake switch independently of Windows or other system reduced-motion settings.

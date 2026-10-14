@@ -33,7 +33,7 @@ const DOMINATION_THRESHOLD = 0.8;
 const BIGGER_BALL_MULT = 1.0;
 const BIGGER_RACKET_MULT = 2;
 const FASTER_BALL_MULT = 0.5;
-const PIERCE_BALL_DURATION = 8;
+const PIERCE_BALL_DURATION = 6;
 
 const POWERUP_VISUAL_RADIUS = SQUARE_SIZE;
 const POWERUP_RESPAWN_QUICK = 10; // seconds after collection
@@ -372,7 +372,7 @@ let powerups = [];
 let activeEffects = { day: {}, night: {} };
 let particles = [], ballTrails = [];
 let _trailPool = []; // recycled trail objects to avoid GC
-const SHAKE_DURATION_TICKS = 10;
+const SHAKE_DURATION_TICKS = 8;
 const SHAKE_COOLDOWN_TICKS = 30;
 let screenShake;
 function resetScreenShake() {
@@ -1906,11 +1906,11 @@ function screenShakeOffset(alpha) {
   const phase = screenShake.previousPhase + (screenShake.phase - screenShake.previousPhase) * alpha;
   const nudge = Math.sin(Math.PI * phase) * intensity;
   // Move the whole scene together and only by whole backing pixels. This
-  // avoids re-antialiasing every edge. A small, visible CSS-pixel nudge stays
-  // consistent on large screens instead of growing with the board's size.
+  // avoids re-antialiasing every edge. The sub-pixel CSS amplitude stays tiny
+  // on large screens instead of increasing with the board's rendered size.
   return {
-    x: Math.round(nudge * 2.5 * canvasPixelRatio) || 0,
-    y: Math.round(nudge * 1.2 * canvasPixelRatio) || 0,
+    x: Math.round(nudge * 0.75 * canvasPixelRatio) || 0,
+    y: Math.round(nudge * 0.3 * canvasPixelRatio) || 0,
   };
 }
 

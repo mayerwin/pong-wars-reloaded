@@ -1,5 +1,16 @@
 # Android TV verification
 
+## Shorter Pierce Ball and restored subtle shake (1.0.8)
+
+Pierce Ball lasts six simulation seconds, keeping half normal speed independent of Fast Ball, fixed duration independent of settings, and refresh without stacking. Shake returns to the earlier 133 ms nudge with 0.75/0.3 CSS-pixel amplitudes, rounded to whole physical pixels, and a 500 ms cooldown. The game's own switches still control shake independently of system reduced motion.
+
+Verified on 13 October 2026: **153 JavaScript tests** pass. Isolated Chrome checks desktop, high-density and mobile layouts, six-second duration, half speed with four Fast Ball stacks, reduced-motion independence and the game Off switch. The dedicated Google TV API 36 emulator passes native start/pickup/pause/resume, live half-speed movement, wall/racket rebounds and expiry with no page exceptions; peak shake is 0.752 CSS pixels. Evidence: ignored `app/build/qa/pierce-v8-browser.json` and `v8-emulator-pierce.json`.
+
+Android debug/release builds and release lint pass. APK/AAB signatures verify and nine bundled assets match the tested source. No native code changed. Signed SHA-256 hashes:
+
+- `pong-wars-reloaded-v1.0.8-16-tv.apk`: `BDD1F91EBA25035464DE2234117914248B15F27CFEB411745755C41B6C96D42E`
+- `pong-wars-reloaded-v1.0.8-16-play.aab`: `BA8E6C706A7E810C979BE53C5F4DE54E95D0046A8F63A0BDE0A17C7A764B2427`
+
 ## Fixed Pierce Ball duration and visible shake (1.0.7)
 
 Pierce Ball now overrides Fast Ball with a 0.5 movement multiplier for exactly eight simulation seconds, regardless of the global duration. Another pickup refreshes that single timer. Unexpired Fast Ball boosts resume afterwards; expired boosts do not return. Web and TV settings explain the exception.

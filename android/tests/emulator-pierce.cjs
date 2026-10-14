@@ -98,7 +98,7 @@ async function main() {
     })()`);
     await app.nativeKey('DPAD_RIGHT', 200);
     await wait("effectStacks('day','PIERCE_BALL',game.tickCount/TICK_RATE) === 1", 'Native movement must collect Pierce Ball');
-    assert.ok(Math.abs(await app.evaluate('__pierceQA.duration') - 8) < 1e-9, 'Pierce Ball ignores the 30-second global duration');
+    assert.ok(Math.abs(await app.evaluate('__pierceQA.duration') - 6) < 1e-9, 'Pierce Ball ignores the 30-second global duration');
     assert.ok((await app.snapshot()).game.players[0].x > 100, 'Native remote moved the racket');
     // Observe sixty live simulation ticks on unobstructed paths. Territory is
     // still active, so this checks both the real movement rate and penetration.
@@ -119,7 +119,7 @@ async function main() {
     assert.ok(evidence.live.captures.filter(c => c.piercing).every(c => c.unchanged), 'Enemy territory must not reflect piercing balls');
     assert.ok(evidence.live.speeds.length >= 100, 'Observe a full interval with both balls in the actual loop');
     assert.ok(evidence.live.speeds.every(s => Math.abs(s.x - 0.5) < 1e-9 && Math.abs(s.y - 0.5) < 1e-9), 'Both live balls move at half unboosted velocity despite four Fast Ball stacks');
-    assert.ok(evidence.live.maxShakeCss > 1 && evidence.live.maxShakeCss <= 3, 'The brief nudge is visible but bounded');
+    assert.ok(evidence.live.maxShakeCss > 0 && evidence.live.maxShakeCss <= 1, 'The brief nudge stays within one CSS pixel');
 
     await app.evaluate(`(() => {
       balls = [makeBall(615, 500, 7, 5, 'day')];
@@ -147,7 +147,7 @@ async function main() {
     evidence.final = await app.snapshot();
     evidence.diagnostics = await app.evaluate('PongGame.getDiagnostics()');
     assert.equal(app.errors.length, 0, JSON.stringify(app.errors));
-    console.log('PASS: native start/pickup/pause/resume, eight-second piercing at half speed despite Fast Ball, walls/racket rebound, expiry, live HUD/icon and visible bounded shake.');
+    console.log('PASS: native start/pickup/pause/resume, six-second piercing at half speed despite Fast Ball, walls/racket rebound, expiry, live HUD/icon and subtle bounded shake.');
   } finally {
     fs.mkdirSync(output, {recursive:true});
     fs.writeFileSync(path.join(output, 'emulator-pierce.json'), JSON.stringify({evidence, errors:app.errors}, null, 2));

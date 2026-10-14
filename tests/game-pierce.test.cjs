@@ -132,12 +132,12 @@ test('team-wide piercing covers current and later extra balls but leaves the opp
 
 test('a repeat pickup refreshes one timed effect; exact expiry restores territory and ball rebounds', () => {
   const site = game();
-  site.run(`settings.powerupDuration = 120; pickup('PIERCE_BALL'); game.tickCount = 7 * TICK_RATE; pickup('PIERCE_BALL'); updatePowerupHUD();`);
-  assert.deepEqual(data(site, 'activeEffects.day.PIERCE_BALL'), [15]);
+  site.run(`settings.powerupDuration = 120; pickup('PIERCE_BALL'); game.tickCount = 5 * TICK_RATE; pickup('PIERCE_BALL'); updatePowerupHUD();`);
+  assert.deepEqual(data(site, 'activeEffects.day.PIERCE_BALL'), [11]);
   const hasPierceBadge = () => site.element('day-powerups').querySelectorAll('.powerup-icon').some(el => el.getAttribute('title') === 'Pierce Ball');
   assert.equal(hasPierceBadge(), true);
   assert.equal(site.run("effectStacks('night', 'PIERCE_BALL', 9)"), 0);
-  site.run('game.tickCount = 15 * TICK_RATE - 1;');
+  site.run('game.tickCount = 11 * TICK_RATE - 1;');
   assert.equal(site.run("effectStacks('day', 'PIERCE_BALL', game.tickCount / TICK_RATE)"), 1);
   site.run(`
     game.tickCount++; fillTerritory(NIGHT_COLOR);
@@ -213,9 +213,9 @@ test('refresh never compounds slowdown; piercing and slowdown expire on the same
     }
   `);
   assert.ok(Math.abs(site.run('advanceSlowBall()') - 4.5) < 1e-9);
-  site.run("game.tickCount = 7 * TICK_RATE; pickup('PIERCE_BALL');");
+  site.run("game.tickCount = 5 * TICK_RATE; pickup('PIERCE_BALL');");
   assert.ok(Math.abs(site.run('advanceSlowBall()') - 4.5) < 1e-9, 'refresh retains half unboosted speed');
-  site.run('game.tickCount = 15 * TICK_RATE - 1;');
+  site.run('game.tickCount = 11 * TICK_RATE - 1;');
   assert.equal(site.run("effectStacks('day', 'PIERCE_BALL', game.tickCount / TICK_RATE)"), 1);
   assert.ok(Math.abs(site.run('advanceSlowBall()') - 4.5) < 1e-9);
   site.run('game.tickCount++;');
@@ -225,14 +225,14 @@ test('refresh never compounds slowdown; piercing and slowdown expire on the same
   assert.ok(site.run('balls[0].dx < 0 || balls[0].dy < 0'), 'territory rebound returns on that same tick');
 });
 
-test('Pierce Ball has its own fixed eight seconds while other effects keep the configured duration', () => {
+test('Pierce Ball has its own fixed six seconds while other effects keep the configured duration', () => {
   for (const duration of [10, 40, 120]) {
     const site = game();
     site.run(`settings.powerupDuration = ${duration}; pickup('PIERCE_BALL'); pickup('FASTER_BALL'); pickup('EXTRA_BALL');`);
-    assert.deepEqual(data(site, 'activeEffects.day.PIERCE_BALL'), [8]);
+    assert.deepEqual(data(site, 'activeEffects.day.PIERCE_BALL'), [6]);
     assert.deepEqual(data(site, 'activeEffects.day.FASTER_BALL'), [duration]);
     assert.equal(site.run('balls.find(b => b.isExtra).expiresAt'), duration);
-    site.run('game.tickCount = 8 * TICK_RATE - 1;');
+    site.run('game.tickCount = 6 * TICK_RATE - 1;');
     assert.equal(site.run("effectStacks('day', 'PIERCE_BALL', game.tickCount / TICK_RATE)"), 1);
     site.run('game.tickCount++;');
     assert.equal(site.run("effectStacks('day', 'PIERCE_BALL', game.tickCount / TICK_RATE)"), 0);
@@ -252,5 +252,5 @@ test('Fast Ball can expire during piercing without changing half speed or return
   `);
   assert.ok(Math.abs(site.run('measureStepAt(9 * TICK_RATE)') - 4.5) < 1e-9);
   assert.ok(Math.abs(site.run('measureStepAt(10 * TICK_RATE)') - 4.5) < 1e-9);
-  assert.ok(Math.abs(site.run('measureStepAt(13 * TICK_RATE)') - 9) < 1e-9);
+  assert.ok(Math.abs(site.run('measureStepAt(11 * TICK_RATE)') - 9) < 1e-9);
 });
