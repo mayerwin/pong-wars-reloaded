@@ -1,139 +1,183 @@
-# Pong Wars Reloaded
+<p align="center">
+  <img src="icon.svg" width="128" height="128" alt="Pong Wars Reloaded">
+</p>
 
-A full multiplayer evolution of the original Pong Wars — the eternal battle between Day and Night, now with rackets, powerups, AI, rotation, and more. Written using HTML5 Canvas, CSS, and vanilla JavaScript.
+<h1 align="center">Pong Wars Reloaded</h1>
 
-**[Play Now](https://mayerwin.github.io/pong-wars-reloaded/)**
+<p align="center">
+  <b>Day against Night. One board. Every square counts.</b><br>
+  The eternal battle of Pong Wars, now with rackets, power-ups and computer opponents.<br>
+  In your browser, on your phone, or on your TV.
+</p>
+
+<p align="center">
+  <a href="https://mayerwin.github.io/pong-wars-reloaded/"><b>▶&nbsp;Play now</b></a>
+  &nbsp;·&nbsp;
+  <a href="#ways-to-play">Ways to play</a>
+  &nbsp;·&nbsp;
+  <a href="#play-on-a-tv">Play on a TV</a>
+  &nbsp;·&nbsp;
+  <a href="#how-to-play">How to play</a>
+  &nbsp;·&nbsp;
+  <a href="#power-ups">Power-ups</a>
+</p>
+
+---
 
 https://github.com/user-attachments/assets/4446a03f-4b24-45d7-b49c-f2209feca44b
 
-## How to Play
+Pong Wars Reloaded is a full multiplayer evolution of [Pong Wars](https://github.com/vnglst/pong-wars), the eternal
+battle between Day and Night. Balls bounce across the board and paint every square they touch in their team's
+colour; now each side also has a racket to defend its land, steer the balls and catch power-ups. Written with
+HTML5 Canvas, CSS and vanilla JavaScript, without any dependency.
 
-### Starting a Game
+## Features
 
-Open `index.html` in any modern browser. From the main menu you can choose:
+- **Two players on one keyboard**, one against the computer, or two computer players to watch, with four
+  difficulty levels (Easy, Medium, Hard, Hardest).
+- **Rackets that turn:** snap them 45° at a time to send the balls where you want, and hit a ball while moving
+  for a power shot.
+- **Six power-ups** spawn as suns and stars: bigger and extra balls, a bigger racket, faster balls, a smaller
+  enemy racket, and piercing balls that cut straight through enemy land.
+- **Three ways to win:** dominate 80% of the board, lead when the clock runs out, or whichever comes first.
+- **Emergency rescue:** three times per match, pull your nearest ball back to your racket.
+- **Plays anywhere:** keyboard on a computer, an on-screen joystick on phones and tablets, and gamepads, the TV
+  remote, keyboards or mice on Android TV and Google TV.
+- **Three colour themes**, arcade menu music, sound cues, particles and screen shake, each with its own switch.
 
-- **2 Player**, **vs AI**, or **AI vs AI** mode (with difficulty: Easy / Medium / Hard / Hardest per AI)
-- **Win condition**: Combined (time + domination), Domination only, or Timed only
-- **Duration**: configurable game length (click the timer label during setup for arbitrary values)
+## Ways to play
+
+| | Where | How to start | Controls |
+|---|---|---|---|
+| 💻 | **Computer**<br>Windows, macOS, Linux, ChromeOS | Open **[mayerwin.github.io/pong-wars-reloaded](https://mayerwin.github.io/pong-wars-reloaded/)** in any modern browser | Keyboard, two players |
+| 📱 | **Phone or tablet**<br>Android, iPhone, iPad | Open the same address. *Add to Home screen* gives it an icon and the full screen | On-screen joystick and rotation buttons |
+| 📺 | **TV**<br>Android TV, Google TV | The app, in a free beta on Google Play: [three steps](#play-on-a-tv) | Gamepads, TV remote, keyboard or mouse; one or two players |
+| 🛠️ | **Your own copy** | Run `npx serve` in this folder ([Development](#development)) | Same as the website |
+
+## How to play
 
 ### Objective
 
-Each side starts with half the grid. Balls bounce around and paint squares in their team's color. Players use rackets to deflect balls and control territory. The game ends by:
+Each side starts with half the board. Balls bounce around and paint squares in their team's colour. Players use
+rackets to deflect balls and control territory. The game ends by:
 
-- **Domination**: a team controls 80% of the grid
+- **Domination**: a team controls 80% of the board
 - **Time**: when the clock runs out, the team with more territory wins
 - **Combined**: whichever happens first
 
+From the main menu choose **2 Players**, **vs AI** or **AI vs AI** (with a difficulty per computer player), the
+win condition, and the duration (click the timer label during setup for any value).
+
 ### Controls
 
-| Action         | Player 1 (Day)    | Player 2 (Night)   |
-|----------------|-------------------|---------------------|
-| Move Up        | E                 | Arrow Up            |
-| Move Down      | D                 | Arrow Down          |
-| Move Left      | S                 | Arrow Left          |
-| Move Right     | F                 | Arrow Right         |
-| Rotate Left    | A                 | , (comma)           |
-| Rotate Right   | Q                 | . (period)          |
+| Action | Player 1 (Day) | Player 2 (Night) |
+|---|---|---|
+| Move up | <kbd>E</kbd> | <kbd>↑</kbd> |
+| Move down | <kbd>D</kbd> | <kbd>↓</kbd> |
+| Move left | <kbd>S</kbd> | <kbd>←</kbd> |
+| Move right | <kbd>F</kbd> | <kbd>→</kbd> |
+| Rotate left | <kbd>A</kbd> | <kbd>,</kbd> |
+| Rotate right | <kbd>Q</kbd> | <kbd>.</kbd> |
 
-**Pause**: press **ESC** or the pause button in the HUD. **Fullscreen**: click the fullscreen button in the HUD.
+**Pause** with <kbd>Esc</kbd> or the pause button in the HUD; the HUD also has a fullscreen button. Every key can
+be changed in **Settings > Configure Keys**. On phones and tablets, side-panel joysticks come with rotation
+buttons.
 
-All key bindings are fully customizable via Settings > Configure Keys.
+- **Rotation:** a press snaps the racket 45 degrees; holding keeps snapping every few frames; both rotate
+  buttons together set it back to vertical.
+- **Emergency rescue:** hold **both rotation keys** for 2 seconds to teleport your nearest ball to your racket.
+  It clears a small area of enemy territory around the spawn point and resets the ball to normal size. Each
+  player gets **3 rescues per game**, shown as dimmed icons in the HUD that brighten while charging.
+- **Power shot:** moving your racket into a ball as it bounces off transfers momentum: the faster you move, the
+  faster the ball goes, up to 30% above base speed. The boost fades over 5 seconds.
 
-**Mobile**: side-panel joystick controls with rotation buttons.
+## Power-ups
 
-### Rotation
+Power-ups spawn as **stars** (Night territory) or **suns** (Day territory) every 15 seconds (configurable), and
+expire after 30 seconds. Walk your racket over one to collect it.
 
-- **Single press**: snaps the racket 45 degrees
-- **Hold**: continues snapping every few frames
-- **Both rotate buttons**: resets rotation to vertical
+| Power-up | Icon | Effect |
+|---|---|---|
+| Big Ball | ◉ | Ball radius +100% of base per stack (max 5 stacks) |
+| Extra Ball | ✚ | An additional ball for your team (max 8) |
+| Big Racket | ⇕ | Your racket grows by 2 blocks per stack (max 3 stacks) |
+| Fast Ball | » | Ball speed +50% of base per stack (max 4 stacks) |
+| Shrink Foe | ⤓ | The opponent's racket shrinks by 2 blocks per stack (max 3 stacks, min 3 blocks) |
+| Pierce Ball | ⇥ | All your balls move at half speed for 6 seconds, ignoring Fast Ball boosts, and capture territory without bouncing; only walls and rackets deflect them |
 
-### Ball Teleport (Emergency Rescue)
-
-Hold **both rotation keys** for 2 seconds to teleport your nearest ball to your racket. This clears a small area of enemy territory around the spawn point and resets the ball to normal size. Each player gets **3 teleports per game** — shown as dimmed icons in the HUD (they brighten and show charging progress while held).
-
-### Power Shot
-
-Moving your racket into a ball as it bounces off transfers momentum — the faster you move, the faster the ball goes. The speed boost decays linearly over 5 seconds back to normal. Maximum boost is capped at 30% above base speed.
-
-## Powerups
-
-Powerups spawn as **stars** (Night territory) or **suns** (Day territory) every 15 seconds (configurable). Uncollected powerups expire after 30 seconds. Walk your racket over a powerup to collect it.
-
-| Powerup        | Icon | Effect                                              |
-|----------------|------|-----------------------------------------------------|
-| Big Ball       | ◉    | Increases ball radius by +100% base per stack (max 5 stacks) |
-| Extra Ball     | ✚    | Spawns an additional ball for your team (max 8)      |
-| Big Racket     | ⇕    | Grows your racket by 2 blocks per stack (max 3 stacks) |
-| Fast Ball      | »    | Increases ball speed by +50% base per stack (max 4 stacks) |
-| Shrink Foe     | ⤓    | Shrinks opponent's racket by 2 blocks per stack (max 3 stacks, min 3 blocks) |
-| Pierce Ball    | ⇥    | All your balls move at half normal speed for 6 seconds, ignoring Fast Ball boosts, and capture territory without bouncing; only walls and rackets deflect them |
-
-- Effects stack cumulatively (up to max per type). Collecting beyond the cap replaces the oldest, extending its duration.
-- Extra balls cap at 8 per team; additional pickups extend the oldest ball's duration.
-- Pierce Ball and its slowdown always last **6 seconds**, including for extra balls, regardless of the duration setting. Another pickup refreshes both to 6 seconds without stacking. Fast Ball boosts are temporarily ignored; any unexpired boosts resume afterwards. A ring marks affected balls, which also pass through other balls.
-- Active powerups are shown in the HUD next to each team's score, with stack counts.
-
-## HUD
-
-- **Score**: territory count per team
-- **Timer**: remaining game time (click to enter arbitrary duration)
-- **Powerup icons**: active effects with stack counts
-- **Teleport charges**: shown as dimmed ⇌ icons with remaining count
-- **Progress bar** (below HUD): visual representation of domination progress, scaled so 100% = reaching the 80% domination threshold
+- Effects stack up to the maximum of each type; collecting beyond the cap replaces the oldest, extending its
+  duration. Extra balls cap at 8 per team; more pickups extend the oldest ball's duration.
+- Pierce Ball and its slowdown always last **6 seconds**, extra balls included, whatever the duration setting.
+  Another pickup refreshes both to 6 seconds without stacking. Fast Ball boosts are ignored meanwhile and resume
+  afterwards if they have not expired. A ring marks the affected balls, which also pass through other balls.
+- Active power-ups show in the HUD next to each team's score, with stack counts.
 
 ## Settings
 
-Access settings via the **gear icon** (⚙) during gameplay, or from the main menu / pause screen. Settings are persisted in localStorage.
+Open the settings with the **gear icon** (⚙) during a game, or from the main menu or the pause screen. They are
+saved in the browser, each with its own reset button. Game rules (power-ups, free movement) are greyed out during
+a game.
 
-### Sound
-- **Sound On/Off**: master sound toggle
-- **Menu Music On/Off**: looping arcade music in menus, with a remembered preference. Browsers may require a click or key press before audio starts.
-- Menu navigation, button presses and match start have short sound cues, even with menu music off. Starting a match fades the music into the start cue without delaying play. The Sound switch and volume apply to these cues too.
-- **Touch vibration On/Off**: gentle feedback for taps and match start on supported touch devices, saved independently of sound. This setting appears only when the browser exposes vibration support.
-- **Volume**: adjustable slider (0-100%)
+| | |
+|---|---|
+| **Sound** | Master switch and volume; **menu music** (looping arcade music in menus, remembered separately); short cues for menu navigation and match start, which fade the music without delaying play; **touch vibration** where the browser supports it |
+| **Visual effects** | Master switch; **colour theme** (Coral, Sunset or Cyber); **screen shake** (tiny nudges on racket hits and pickups, independent of the device's reduced-motion setting); racket outline; grid lines (off by default); particles; progress bar |
+| **Power-ups** | **Frequency** (5 to 60 seconds); **duration** (10 to 120 seconds, except Pierce Ball's fixed 6 seconds); **mirrored types** (both teams get the same sequence, off by default) |
+| **Gameplay** | **Free movement**: rackets may cross enemy territory and collect power-ups on either side (off by default: enemy squares block rackets) |
 
-### Visual Effects
-- **Master toggle**: enables/disables all visual effects
-- **Color Theme**: choose between Coral, Sunset, or Cyber palettes
-- **Screen Shake**: tiny, brief nudges on racket hits and powerup pickups; territory capture stays steady. Controlled by this switch independently of particles and your device's reduced-motion preference.
-- **Racket Outline**: colored outline around rackets
-- **Grid Lines**: subtle grid overlay (off by default)
-- **Particles**: impact and confetti particles
-- **Progress Bar**: domination progress indicator
+<details>
+<summary><b>HUD, win screen and physics details</b></summary>
 
-### Powerups
-- **Frequency**: how often powerups spawn (5-60 seconds)
-- **Duration**: how long powerup effects last (10-120 seconds), except Pierce Ball's fixed 6 seconds
-- **Mirrored Types**: both teams spawn the same powerup sequence (off by default)
+### HUD
 
-### Gameplay
-- **Free Movement**: allows rackets to move freely across enemy territory and collect powerups from either side (off by default — when off, rackets are blocked by enemy squares)
+- **Score**: territory count per team
+- **Timer**: remaining game time (click to enter any duration)
+- **Power-up icons**: active effects with stack counts
+- **Rescue charges**: dimmed ⇌ icons with the remaining count
+- **Progress bar** (below the HUD): domination progress, scaled so that 100% means the 80% domination threshold
 
-Game-logic settings (powerup config, free movement) are greyed out during active gameplay to prevent mid-game changes.
-
-Each setting has an individual reset-to-default button.
-
-## Stuck Racket Protection
-
-If a racket becomes completely trapped by enemy territory (can't move or rotate in any direction), the game automatically clears adjacent enemy squares to free it. This prevents permanent soft-locks.
-
-## Win Screen
+### Win screen
 
 - **Domination win**: "DAY/NIGHT DOMINATES!"
-- **Time-based win**: "DAY/NIGHT WINS!" with domination percentage (e.g. "59% domination")
+- **Time-based win**: "DAY/NIGHT WINS!" with the domination percentage (for example "59% domination")
 - **Draw** (both at 50%): "IT'S A DRAW!"
 
-## Ball Physics
+### Physics
 
-- Sub-stepped movement prevents balls from passing through rackets at high speed
-- Ball-ball elastic collision prevents overlapping when multiple balls are in play, except while Pierce Ball is active
+- Sub-stepped movement keeps fast balls from passing through rackets
+- Elastic ball-ball collisions keep balls from overlapping, except while Pierce Ball is active
 - Balls pass through squares protected by the opponent's racket (no stuck oscillation)
+- A racket completely trapped by enemy territory gets the adjacent enemy squares cleared, so it can never be stuck
+  for good
 
-## Android TV / Google TV beta
+</details>
 
-Play on Android TV or Google TV (including Google TV Streamer), solo or with two players. Supports gamepads, TV remotes, keyboards and mice.
+## Play on a TV
 
-To join the beta, sign in and [join the tester group](https://groups.google.com/g/erwin-mayer-labs-beta/about), then [opt in on Google Play](https://play.google.com/apps/testing/com.github.pongwarsreloaded) using your TV's Google account and follow **Download test app**. Access may take time to activate. No debugging or sideloading needed. [Report issues](https://github.com/mayerwin/pong-wars-reloaded/issues).
+Pong Wars Reloaded for **Android TV and Google TV** (Google TV Streamer, Chromecast with Google TV, TVs with
+Google TV built in) is in a free beta on Google Play, solo or with two players, with gamepads, the TV remote,
+keyboards or mice.
+
+1. **Join the tester group.** On a phone or a computer, signed in with the Google account of your TV, open
+   the [tester group](https://groups.google.com/g/erwin-mayer-labs-beta/about) and choose **Join group**.
+2. **Become a tester.** With the same account, open
+   [play.google.com/apps/testing/com.github.pongwarsreloaded](https://play.google.com/apps/testing/com.github.pongwarsreloaded)
+   and choose **Become a tester**.
+3. **Install it.** Find Pong Wars Reloaded in Google Play on your TV, or follow **Download test app** on the
+   testing page and pick your TV as the device.
+
+No developer options, no sideloading. Google can take a few hours to let a new tester in. Google Play only accepts
+testers it knows, which is why there are two steps; to invite someone, send the group's page: it links every app
+of the beta. [Report a problem](https://github.com/mayerwin/pong-wars-reloaded/issues).
+
+| On the TV | Move | Rotate | Rescue | Pause |
+|---|---|---|---|---|
+| Gamepad | stick or d-pad | shoulders or triggers | hold X or Y | Start, Back or B |
+| TV remote | arrows | tap OK to switch between moving and rotating | hold OK | Back |
+| Mouse | move the mouse | scroll wheel | hold the left button | right button |
+
+Each player joins by pressing a button on their device; a new device shows which buttons to use once, then
+remembers them.
 
 ## Development
 
@@ -145,23 +189,30 @@ npx serve
 
 Open up the link and you're ready to start.
 
-Run the automated tests with `node --test tests/*.test.cjs android/tests/*.test.cjs`. Android build and release instructions are in [android/README.md](android/README.md).
+Run the automated tests with `node --test tests/*.test.cjs android/tests/*.test.cjs`. Android build and release
+instructions are in [android/README.md](android/README.md).
 
 ## Credits
 
-Original Pong Wars by [Koen van Gilst](https://koenvangilst.nl). This fork by [Erwin Mayer](https://github.com/mayerwin/pong-wars-reloaded).
+Original Pong Wars by [Koen van Gilst](https://koenvangilst.nl). This fork by
+[Erwin Mayer](https://github.com/mayerwin/pong-wars-reloaded).
 
-Menu music: **Level 1** from *Retro Game Music Pack* by Juhani Junkala, released under [CC0](https://opengameart.org/content/5-chiptunes-action). [Audio credits and license](assets/audio/LICENSE.txt).
+Menu music: **Level 1** from *Retro Game Music Pack* by Juhani Junkala, released under
+[CC0](https://opengameart.org/content/5-chiptunes-action). [Audio credits and license](assets/audio/LICENSE.txt).
 
-I saw this first [here](https://twitter.com/nicolasdnl/status/1749715070928433161), but it appears to be a much older idea. There's some more information on the history in the [Hackernews discussion](https://news.ycombinator.com/item?id=39159418).
+I saw this first [here](https://twitter.com/nicolasdnl/status/1749715070928433161), but it appears to be a much
+older idea. There's some more information on the history in the
+[Hackernews discussion](https://news.ycombinator.com/item?id=39159418).
 
-The colors are based on the Mindful Palette by [Alex Cristache](https://twitter.com/AlexCristache/status/1738610343499157872).
+The colors are based on the Mindful Palette by
+[Alex Cristache](https://twitter.com/AlexCristache/status/1738610343499157872).
 
 ## Alternate versions
 
 If you've created an alternate version of Pong Wars and would like to share it, please feel free to create a pull request to add the link here.
 
-The alternate versions are listed below in alphabetical order:
+<details>
+<summary>38 alternate versions, in alphabetical order</summary>
 
 - [ASCII Python](https://github.com/flash1293/ascii-pong-wars)
 - [Atari 2600](https://forums.atariage.com/topic/360475-pong-wars-atari-2600)
@@ -201,3 +252,5 @@ The alternate versions are listed below in alphabetical order:
 - [Bevy](https://github.com/andyleclair/bevy_pong_wars)
 - [Atari ST](https://github.com/neilrackett/atarist-pong-wars.git)
 - [Three.js](https://labs.mesmotronic.com/three-labs/pong-wars-3d/)
+
+</details>
